@@ -151,16 +151,17 @@ object MiBluetoothToastHook : YukiBaseHooker() {
 
                     textButton {
                         addActionInfo {
+                            val ancLabel = moduleContext.getString(R.string.cycle_anc)
                             val ancAction = Notification.Action.Builder(
                                 Icon.createWithResource(context, android.R.drawable.ic_lock_silent_mode),
-                                "ANC",
+                                ancLabel,
                                 PendingIntent.getBroadcast(context, 1, ancCycleIntent, 201326592)
                             ).build()
                             action = createAction("key_anc_cycle", ancAction)
-                            actionTitle = "ANC"
+                            actionTitle = ancLabel
                         }
                         addActionInfo {
-                            val disconnectLabel = context.resources.getString(miheadset_notification_Disconnect)
+                            val disconnectLabel = moduleContext.getString(R.string.notification_btn_disconnect)
                             val disconnectIntent = Intent("com.android.bluetooth.headset.notification").apply {
                                 putExtra("btData", bundle)
                                 putExtra("disconnect", "1")
@@ -188,6 +189,7 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                         val json = org.json.JSONObject(focusExtras.getString("miui.focus.param") ?: "{}")
                         val pv2 = json.optJSONObject("param_v2") ?: org.json.JSONObject()
                         pv2.put("aodTitle", aodTitle)
+                        pv2.put("aodPic", "key_headset")
                         json.put("param_v2", pv2)
                         focusExtras.putString("miui.focus.param", json.toString())
                     } catch (_: Exception) {}

@@ -40,4 +40,5 @@
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
     <string name="cycle_anc">切换降噪</string>
+    <string name="notification_btn_disconnect">断开连接</string>
 </resources>

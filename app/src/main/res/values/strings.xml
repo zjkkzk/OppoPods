@@ -39,4 +39,5 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="cycle_anc">Cycle ANC</string>
+    <string name="notification_btn_disconnect">Disconnect</string>
 </resources>
