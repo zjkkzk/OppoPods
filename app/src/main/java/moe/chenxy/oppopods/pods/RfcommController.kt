@@ -85,7 +85,7 @@ object RfcommController {
     }
 
     private fun changeUIAncStatus(status: Int) {
-        if (status < 1 || status > 3) return
+        if (status < 1 || status > 4) return
         Intent(OppoPodsAction.ACTION_PODS_ANC_CHANGED).apply {
             this.putExtra("status", status)
             this.`package` = BuildConfig.APPLICATION_ID
@@ -358,6 +358,7 @@ object RfcommController {
                 NoiseControlMode.OFF -> 1
                 NoiseControlMode.NOISE_CANCELLATION -> 2
                 NoiseControlMode.TRANSPARENCY -> 3
+                NoiseControlMode.ADAPTIVE -> 4
             }
             changeUIAncStatus(currentAnc)
             return
@@ -425,7 +426,8 @@ object RfcommController {
     fun cycleAnc() {
         // 循环顺序：降噪 → 通透 → 关
         val next = when (currentAnc) {
-            2 -> 3  // NC -> Transparency
+            2 -> 4  // NC -> Adaptive
+            4 -> 3  // Adaptive -> Transparency
             3 -> 1  // Transparency -> OFF
             else -> 2  // OFF or unknown -> NC
         }
@@ -439,6 +441,7 @@ object RfcommController {
             1 -> Enums.ANC_OFF
             2 -> Enums.ANC_NOISE_CANCEL
             3 -> Enums.ANC_TRANSPARENCY
+            4 -> Enums.ANC_ADAPTIVE
             else -> return
         }
         CoroutineScope(Dispatchers.IO).launch {

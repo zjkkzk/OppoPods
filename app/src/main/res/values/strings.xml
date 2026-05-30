@@ -15,6 +15,7 @@
     <string name="off">Off</string>
     <string name="noise_cancellation_title">NC</string>
     <string name="transparency_title">Transparency</string>
+    <string name="adaptive_title">Adaptive</string>
     <string name="pod_case">Case</string>
     <string name="batt_left_pod">Left</string>
     <string name="batt_right_pod">Right</string>

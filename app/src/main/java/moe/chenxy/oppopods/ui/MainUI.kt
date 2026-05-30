@@ -129,6 +129,7 @@ fun MainUI(
                             1 -> NoiseControlMode.OFF
                             2 -> NoiseControlMode.NOISE_CANCELLATION
                             3 -> NoiseControlMode.TRANSPARENCY
+                            4 -> NoiseControlMode.ADAPTIVE
                             else -> NoiseControlMode.OFF
                         }
                     }
@@ -185,6 +186,7 @@ fun MainUI(
             NoiseControlMode.OFF -> 1
             NoiseControlMode.NOISE_CANCELLATION -> 2
             NoiseControlMode.TRANSPARENCY -> 3
+            NoiseControlMode.ADAPTIVE -> 4
         }
         Intent(OppoPodsAction.ACTION_ANC_SELECT).apply {
             this.putExtra("status", status)

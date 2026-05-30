@@ -29,7 +29,7 @@ import moe.chenxy.oppopods.R
 @SuppressLint("MissingPermission")
 object MiBluetoothToastHook : YukiBaseHooker() {
 
-    // 本地记录上次发送的 ANC 模式，用于循环切换（1=关 2=降噪 3=通透）
+    // 本地记录上次发送的 ANC 模式，用于循环切换（1=关 2=降噪 3=通透 4=自适应）
     private var localAncMode = 1
 
     override fun onHook() {
@@ -255,7 +255,8 @@ object MiBluetoothToastHook : YukiBaseHooker() {
                             } else if (p1?.action == OppoPodsAction.ACTION_CYCLE_ANC) {
                                 // 循环：降噪→通透→关，转发 ACTION_ANC_SELECT 到 com.android.bluetooth
                                 localAncMode = when (localAncMode) {
-                                    2 -> 3
+                                    2 -> 4
+                                    4 -> 3
                                     3 -> 1
                                     else -> 2
                                 }

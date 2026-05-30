@@ -56,15 +56,6 @@ fun AncSwitch(
         verticalAlignment = Alignment.CenterVertically
     ) {
         AncButton(
-            offIconRes = R.drawable.ic_transparent_off,
-            onIconRes = R.drawable.ic_transparent_on,
-            label = stringResource(R.string.transparency_title),
-            isSelected = ancStatus == NoiseControlMode.TRANSPARENCY,
-            onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) },
-            modifier = Modifier.weight(1f),
-            compact = compact
-        )
-        AncButton(
             offIconRes = R.drawable.ic_openanc_off,
             onIconRes = R.drawable.ic_openanc_on,
             label = stringResource(R.string.noise_cancellation_title),
@@ -72,6 +63,22 @@ fun AncSwitch(
             onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) },
             modifier = Modifier.weight(1f),
             compact = compact
+        )
+        AncButton(
+            offIconRes = R.drawable.ic_adaptive_off,
+            onIconRes = R.drawable.ic_adaptive_on,
+            label = stringResource(R.string.adaptive_title),
+            isSelected = ancStatus == NoiseControlMode.ADAPTIVE,
+            onClick = { onAncModeChange(NoiseControlMode.ADAPTIVE) },
+            modifier = Modifier.weight(1f)
+        )
+        AncButton(
+            offIconRes = R.drawable.ic_transparent_off,
+            onIconRes = R.drawable.ic_transparent_on,
+            label = stringResource(R.string.transparency_title),
+            isSelected = ancStatus == NoiseControlMode.TRANSPARENCY,
+            onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) },
+            modifier = Modifier.weight(1f)
         )
         AncButton(
             offIconRes = R.drawable.ic_closeanc_off,

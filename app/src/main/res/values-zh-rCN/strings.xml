@@ -16,6 +16,7 @@
     <string name="off">关闭</string>
     <string name="noise_cancellation_title">降噪</string>
     <string name="transparency_title">通透</string>
+    <string name="adaptive_title">自适应</string>
     <string name="pod_case">耳机盒</string>
     <string name="batt_left_pod">左</string>
     <string name="batt_right_pod">右</string>
