@@ -38,8 +38,13 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 import top.yukonga.miuix.kmp.basic.Text
 
 @Composable
-fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
+fun PodStatus(
+    batteryParams: BatteryParams,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
     val dividerColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
+    val dividerHeight = if (compact) 40.dp else 56.dp
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -48,35 +53,38 @@ fun PodStatus(batteryParams: BatteryParams, modifier: Modifier = Modifier) {
         BatteryColumn(
             label = stringResource(R.string.batt_left_pod),
             pod = batteryParams.left,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            compact = compact
         )
         Box(
             modifier = Modifier
                 .width(0.5.dp)
-                .height(56.dp)
+                .height(dividerHeight)
                 .background(dividerColor)
         )
         BatteryColumn(
             label = stringResource(R.string.batt_right_pod),
             pod = batteryParams.right,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            compact = compact
         )
         Box(
             modifier = Modifier
                 .width(0.5.dp)
-                .height(56.dp)
+                .height(dividerHeight)
                 .background(dividerColor)
         )
         BatteryColumn(
             label = stringResource(R.string.pod_case),
             pod = batteryParams.case,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            compact = compact
         )
     }
 }
 
 @Composable
-private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = Modifier) {
+private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = Modifier, compact: Boolean = false) {
     val isConnected = pod != null && pod.isConnected
     val level = pod?.battery ?: 0
 
@@ -97,7 +105,7 @@ private fun BatteryColumn(label: String, pod: PodParams?, modifier: Modifier = M
     ) {
         Column(
             horizontalAlignment = Alignment.Start,
-            modifier = Modifier.padding(vertical = 4.dp)
+            modifier = Modifier.padding(vertical = if (compact) 2.dp else 4.dp)
         ) {
             Text(
                 text = paddedLabel,

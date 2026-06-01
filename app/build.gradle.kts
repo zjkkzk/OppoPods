@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.agp.app)
-    alias(libs.plugins.kotlin)
     alias(libs.plugins.ksp)
     alias(libs.plugins.lsplugin.apksign)
     alias(libs.plugins.lsplugin.resopt)
@@ -18,7 +17,7 @@ apksign {
 
 android {
     namespace = "moe.chenxy.oppopods"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "moe.chenxy.oppopods"
@@ -42,7 +41,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            multiDexEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -103,6 +101,7 @@ dependencies {
 
     // Miuix
     implementation(libs.miuix)
+    implementation(libs.miuix.preference)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.navigation3.ui)
 

@@ -38,7 +38,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.extra.SuperDialog
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @SuppressLint("MissingPermission")
@@ -127,9 +127,9 @@ fun DevicePickerPage(onDeviceSelected: (BluetoothDevice) -> Unit) {
         )
     }
 
-    SuperDialog(
+    OverlayDialog(
         title = stringResource(R.string.input_mac_title),
-        show = showMacDialog,
+        show = showMacDialog.value,
         onDismissRequest = { showMacDialog.value = false },
     ) {
         TextField(
