@@ -31,14 +31,6 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 fun SettingsPage(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    themeMode: MutableState<Int> = mutableStateOf(0),
-    onThemeModeChange: (Int) -> Unit = {},
-    accentMode: MutableState<Int> = mutableStateOf(0),
-    onAccentModeChange: (Int) -> Unit = {},
-    floatingBottomBar: MutableState<Boolean> = mutableStateOf(false),
-    onFloatingBottomBarChange: (Boolean) -> Unit = {},
-    blurBottomBar: MutableState<Boolean> = mutableStateOf(false),
-    onBlurBottomBarChange: (Boolean) -> Unit = {},
     desktopIconHidden: MutableState<Boolean> = mutableStateOf(false),
     onDesktopIconHiddenChange: (Boolean) -> Unit = {},
     logLevel: MutableState<Int> = mutableStateOf(ConfigManager.LOG_LEVEL_BASIC),
@@ -53,18 +45,10 @@ fun SettingsPage(
     onAdaptiveModeChange: (Boolean) -> Unit = {},
     fakeDeviceId: MutableState<String> = mutableStateOf(ConfigManager.DEFAULT_FAKE_DEVICE_ID),
     onFakeDeviceIdChange: (String) -> Unit = {},
+    onOpenTheme: () -> Unit = {},
     onOpenAbout: () -> Unit = {}
 ) {
     val showHeyTapWarning = remember { mutableStateOf(false) }
-    val themeOptions = listOf(
-        stringResource(R.string.theme_follow_system),
-        stringResource(R.string.theme_light),
-        stringResource(R.string.theme_dark)
-    )
-    val accentOptions = listOf(
-        stringResource(R.string.color_default),
-        stringResource(R.string.color_monet),
-    )
     val languageOptions = listOf(
         stringResource(R.string.language_system),
         stringResource(R.string.language_chinese),
@@ -88,30 +72,10 @@ fun SettingsPage(
     ) {
         item {
             Card {
-                OverlayDropdownPreference(
+                BasicComponent(
                     title = stringResource(R.string.theme_title),
-                    items = themeOptions,
-                    selectedIndex = themeMode.value,
-                    onSelectedIndexChange = { onThemeModeChange(it) }
-                )
-                OverlayDropdownPreference(
-                    title = stringResource(R.string.theme_color),
                     summary = stringResource(R.string.theme_color_summary),
-                    items = accentOptions,
-                    selectedIndex = accentMode.value.coerceIn(accentOptions.indices),
-                    onSelectedIndexChange = { onAccentModeChange(it) }
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.floating_bottom_bar),
-                    summary = stringResource(R.string.floating_bottom_bar_summary),
-                    checked = floatingBottomBar.value,
-                    onCheckedChange = { onFloatingBottomBarChange(it) }
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.blur_bottom_bar),
-                    summary = stringResource(R.string.blur_bottom_bar_summary),
-                    checked = blurBottomBar.value,
-                    onCheckedChange = { onBlurBottomBarChange(it) }
+                    onClick = onOpenTheme,
                 )
             }
         }

@@ -4,6 +4,8 @@
     <string name="pod_info">Pod Info</string>
     <string name="about">About OppoPods</string>
     <string name="settings">Settings</string>
+    <string name="module">Module</string>
+    <string name="earphones">Earphones</string>
     <string name="based_on">Based on</string>
     <string name="game_mode">Game Mode</string>
     <string name="game_mode_summary">Low latency audio mode</string>

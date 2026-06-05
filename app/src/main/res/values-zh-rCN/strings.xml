@@ -5,6 +5,8 @@
     <string name="pod_info">耳机信息</string>
     <string name="about">关于 OppoPods</string>
     <string name="settings">设置</string>
+    <string name="module">模块</string>
+    <string name="earphones">耳机</string>
     <string name="based_on">基于</string>
     <string name="game_mode">游戏模式</string>
     <string name="game_mode_summary">低延迟音频模式</string>

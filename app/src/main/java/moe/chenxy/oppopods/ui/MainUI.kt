@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +40,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,6 +65,8 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
@@ -71,6 +75,10 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
@@ -82,6 +90,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 sealed interface Screen : NavKey {
     data object Main : Screen
     data object About : Screen
+    data object Theme : Screen
 }
 
 private enum class MainTab(val icon: ImageVector) {
@@ -93,6 +102,7 @@ private enum class MainTab(val icon: ImageVector) {
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MainUI(
+    backStack: SnapshotStateList<Screen>,
     themeMode: MutableState<Int> = mutableStateOf(0),
     onThemeModeChange: (Int) -> Unit = {},
     accentMode: MutableState<Int> = mutableStateOf(0),
@@ -101,8 +111,9 @@ fun MainUI(
     onFloatingBottomBarChange: (Boolean) -> Unit = {},
     blurBottomBar: MutableState<Boolean> = mutableStateOf(false),
     onBlurBottomBarChange: (Boolean) -> Unit = {},
+    appLanguage: MutableState<Int> = mutableStateOf(AppLocale.SYSTEM),
+    onAppLanguageChange: (Int) -> Unit = {},
 ) {
-    val backStack = remember { mutableStateListOf<Screen>(Screen.Main) }
     val context = LocalContext.current
 
     val mainTitle = remember { mutableStateOf("") }
@@ -121,6 +132,13 @@ fun MainUI(
         2 -> ColorSchemeMode.Dark
         else -> ColorSchemeMode.System
     }
+    val backgroundColor = appBackground(colorMode)
+    val overlayBottomBar = floatingBottomBar.value || blurBottomBar.value
+    val pageBottomContentPadding = if (overlayBottomBar) 104.dp else 28.dp
+    val backdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
 
     // Auto game mode preference (persisted)
     val prefs = remember { context.getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE) }
@@ -129,7 +147,6 @@ fun MainUI(
     val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
     val desktopIconHidden = remember { mutableStateOf(isLauncherIconHidden(context)) }
     val logLevel = remember { mutableStateOf(appConfig.logLevel) }
-    val appLanguage = remember { mutableStateOf(prefs.getInt("app_language", AppLocale.SYSTEM)) }
     val fakeDeviceId = remember { mutableStateOf(appConfig.fakeDeviceId) }
     // Adaptive模式偏好设置（持久化存储），默认开启
     val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
@@ -345,28 +362,23 @@ fun MainUI(
                     )
                 },
                 bottomBar = {
-                    Box(modifier = Modifier.padding(horizontal = if (floatingBottomBar.value) 16.dp else 0.dp, vertical = if (floatingBottomBar.value) 10.dp else 0.dp)) {
-                        NavigationBar(
-                            color = if (blurBottomBar.value) MiuixTheme.colorScheme.surface.copy(alpha = 0.82f) else MiuixTheme.colorScheme.surface,
-                            showDivider = !floatingBottomBar.value,
-                        ) {
-                            tabs.forEach { tab ->
-                                NavigationBarItem(
-                                    selected = selectedTab == tab,
-                                    onClick = { selectedTab = tab },
-                                    icon = tab.icon,
-                                    label = tab.title(),
-                                )
-                            }
-                        }
-                    }
+                    BottomNavigation(
+                        tabs = tabs,
+                        selectedTab = selectedTab,
+                        floating = floatingBottomBar.value,
+                        blur = blurBottomBar.value,
+                        backdrop = backdrop,
+                        onTabClick = { selectedTab = it },
+                    )
                 }
             ) { padding ->
+                val contentPadding = if (overlayBottomBar) padding.withoutBottom() else padding
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(appBackground(colorMode))
-                        .padding(padding),
+                        .background(backgroundColor)
+                        .layerBackdrop(backdrop)
+                        .padding(contentPadding),
                 ) {
                     AnimatedContent(
                         targetState = selectedTab,
@@ -380,7 +392,7 @@ fun MainUI(
                                 xposedService = xposedService,
                                 bluetoothEnabled = bluetoothState.enabled,
                                 bondedDeviceCount = bluetoothState.bondedCount,
-                                bottomContentPadding = 28.dp,
+                                bottomContentPadding = pageBottomContentPadding,
                             )
 
                             MainTab.Earphones -> AnimatedContent(
@@ -397,7 +409,7 @@ fun MainUI(
                                         modifier = Modifier
                                             .overScrollVertical()
                                             .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
-                                        contentPadding = PaddingValues(0.dp),
+                                        contentPadding = PaddingValues(bottom = pageBottomContentPadding),
                                         batteryParams = displayBattery,
                                         ancMode = displayAnc,
                                         onAncModeChange = { setAncMode(it) },
@@ -410,6 +422,7 @@ fun MainUI(
                                     "error" -> ErrorPage(onRetry = { appController.disconnect() })
                                     else -> DevicePickerPage(
                                         connectedDeviceName = displayTitle,
+                                        bottomContentPadding = pageBottomContentPadding,
                                         onDeviceSelected = { onDeviceSelected(it) }
                                     )
                                 }
@@ -419,15 +432,7 @@ fun MainUI(
                                 modifier = Modifier
                                     .overScrollVertical()
                                     .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
-                                contentPadding = PaddingValues(0.dp),
-                                themeMode = themeMode,
-                                onThemeModeChange = onThemeModeChange,
-                                accentMode = accentMode,
-                                onAccentModeChange = onAccentModeChange,
-                                floatingBottomBar = floatingBottomBar,
-                                onFloatingBottomBarChange = onFloatingBottomBarChange,
-                                blurBottomBar = blurBottomBar,
-                                onBlurBottomBarChange = onBlurBottomBarChange,
+                                contentPadding = PaddingValues(bottom = pageBottomContentPadding),
                                 desktopIconHidden = desktopIconHidden,
                                 onDesktopIconHiddenChange = {
                                     desktopIconHidden.value = it
@@ -444,8 +449,7 @@ fun MainUI(
                                 appLanguage = appLanguage,
                                 onAppLanguageChange = {
                                     appLanguage.value = it
-                                    prefs.edit().putInt("app_language", it).apply()
-                                    (context as? Activity)?.let { activity -> AppLocale.applyAndRecreate(activity, it) }
+                                    onAppLanguageChange(it)
                                 },
                                 autoGameMode = autoGameMode,
                                 onAutoGameModeChange = {
@@ -478,6 +482,7 @@ fun MainUI(
                                     broadcastConfigChanged(context, "com.milink.service")
                                     broadcastConfigChanged(context, "com.xiaomi.bluetooth")
                                 },
+                                onOpenTheme = { backStack.add(Screen.Theme) },
                                 onOpenAbout = { backStack.add(Screen.About) },
                             )
                         }
@@ -512,7 +517,47 @@ fun MainUI(
                         modifier = Modifier
                             .overScrollVertical()
                             .nestedScroll(aboutScrollBehavior.nestedScrollConnection),
-                        contentPadding = PaddingValues(0.dp),
+                        contentPadding = PaddingValues(bottom = pageBottomContentPadding),
+                    )
+                }
+            }
+        }
+        entry<Screen.Theme> {
+            val themeScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = stringResource(R.string.theme_title),
+                        largeTitle = stringResource(R.string.theme_title),
+                        scrollBehavior = themeScrollBehavior,
+                        navigationIcon = {
+                            IconButton(onClick = { backStack.removeLast() }) {
+                                Icon(imageVector = MiuixIcons.Back, contentDescription = "Back")
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(appBackground(colorMode))
+                        .padding(padding),
+                ) {
+                    ThemeSettingsPage(
+                        modifier = Modifier
+                            .overScrollVertical()
+                            .nestedScroll(themeScrollBehavior.nestedScrollConnection),
+                        contentPadding = PaddingValues(bottom = pageBottomContentPadding),
+                        themeMode = themeMode,
+                        onThemeModeChange = onThemeModeChange,
+                        accentMode = accentMode,
+                        onAccentModeChange = onAccentModeChange,
+                        floatingBottomBar = floatingBottomBar,
+                        onFloatingBottomBarChange = onFloatingBottomBarChange,
+                        blurBottomBar = blurBottomBar,
+                        onBlurBottomBarChange = onBlurBottomBarChange,
                     )
                 }
             }
@@ -536,10 +581,69 @@ fun MainUI(
     )
 }
 
+private fun PaddingValues.withoutBottom(): PaddingValues {
+    return PaddingValues(
+        start = calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+        top = calculateTopPadding(),
+        end = calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+        bottom = 0.dp,
+    )
+}
+
+@Composable
+private fun BottomNavigation(
+    tabs: List<MainTab>,
+    selectedTab: MainTab,
+    floating: Boolean,
+    blur: Boolean,
+    backdrop: LayerBackdrop,
+    onTabClick: (MainTab) -> Unit,
+) {
+    val barModifier = if (blur) {
+        Modifier.textureBlur(
+            backdrop = backdrop,
+            shape = RoundedCornerShape(if (floating) 50.dp else 0.dp),
+        )
+    } else {
+        Modifier
+    }
+
+    if (floating) {
+        FloatingNavigationBar(
+            modifier = barModifier,
+            color = if (blur) Color.Transparent else MiuixTheme.colorScheme.surfaceContainer,
+        ) {
+            tabs.forEach { tab ->
+                FloatingNavigationBarItem(
+                    selected = selectedTab == tab,
+                    onClick = { onTabClick(tab) },
+                    icon = tab.icon,
+                    label = tab.title(),
+                )
+            }
+        }
+    } else {
+        NavigationBar(
+            modifier = barModifier,
+            color = if (blur) Color.Transparent else MiuixTheme.colorScheme.surface,
+            showDivider = false,
+        ) {
+            tabs.forEach { tab ->
+                NavigationBarItem(
+                    selected = selectedTab == tab,
+                    onClick = { onTabClick(tab) },
+                    icon = tab.icon,
+                    label = tab.title(),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun MainTab.title(): String = when (this) {
-    MainTab.Module -> "模块"
-    MainTab.Earphones -> "耳机"
+    MainTab.Module -> stringResource(R.string.module)
+    MainTab.Earphones -> stringResource(R.string.earphones)
     MainTab.Settings -> stringResource(R.string.settings)
 }
 

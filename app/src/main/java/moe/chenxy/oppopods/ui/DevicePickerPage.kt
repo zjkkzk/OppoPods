@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.core.content.ContextCompat
 import moe.chenxy.oppopods.R
 import top.yukonga.miuix.kmp.basic.Card
@@ -47,6 +48,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun DevicePickerPage(
     connectedDeviceName: String = "",
+    bottomContentPadding: Dp = 16.dp,
     onDeviceSelected: (BluetoothDevice) -> Unit,
 ) {
     val context = LocalContext.current
@@ -97,7 +99,7 @@ fun DevicePickerPage(
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(12.dp)
+            contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = bottomContentPadding)
         ) {
             item {
                 Text(
@@ -129,7 +131,7 @@ fun DevicePickerPage(
             onClick = { showMacDialog.value = true },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = bottomContentPadding)
         )
     }
 
