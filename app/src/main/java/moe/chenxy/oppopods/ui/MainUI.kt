@@ -2,11 +2,15 @@ package moe.chenxy.oppopods.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
@@ -16,6 +20,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,11 +38,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -56,6 +64,8 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.OppoPodsAction
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -65,21 +75,34 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
 sealed interface Screen : NavKey {
-    data object Home : Screen
-    data object Settings : Screen
+    data object Main : Screen
+    data object About : Screen
+}
+
+private enum class MainTab(val icon: ImageVector) {
+    Module(AppIcons.Home),
+    Earphones(AppIcons.Headphones),
+    Settings(MiuixIcons.Settings),
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MainUI(
     themeMode: MutableState<Int> = mutableStateOf(0),
-    onThemeModeChange: (Int) -> Unit = {}
+    onThemeModeChange: (Int) -> Unit = {},
+    accentMode: MutableState<Int> = mutableStateOf(0),
+    onAccentModeChange: (Int) -> Unit = {},
+    floatingBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    onFloatingBottomBarChange: (Boolean) -> Unit = {},
+    blurBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    onBlurBottomBarChange: (Boolean) -> Unit = {},
 ) {
-    val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val backStack = remember { mutableStateListOf<Screen>(Screen.Main) }
     val context = LocalContext.current
 
     val mainTitle = remember { mutableStateOf("") }
@@ -87,12 +110,26 @@ fun MainUI(
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
     val hookConnected = remember { mutableStateOf(false) }
     val gameMode = remember { mutableStateOf(false) }
+    val tabs = remember { MainTab.entries.toList() }
+    var selectedTab by remember { mutableStateOf(MainTab.Module) }
+    var hasAppliedDefaultTab by remember { mutableStateOf(false) }
+    var bluetoothState by remember { mutableStateOf(readBluetoothState(context)) }
+    var xposedService by remember { mutableStateOf(OppoPodsApp.xposedService) }
+    var showDevicePicker by remember { mutableStateOf(false) }
+    val colorMode = when (themeMode.value) {
+        1 -> ColorSchemeMode.Light
+        2 -> ColorSchemeMode.Dark
+        else -> ColorSchemeMode.System
+    }
 
     // Auto game mode preference (persisted)
     val prefs = remember { context.getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE) }
     val appConfig = remember { ConfigManager.refreshFromPrefs(prefs) }
     val autoGameMode = remember { mutableStateOf(prefs.getBoolean("auto_game_mode", false)) }
     val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
+    val desktopIconHidden = remember { mutableStateOf(isLauncherIconHidden(context)) }
+    val logLevel = remember { mutableStateOf(appConfig.logLevel) }
+    val appLanguage = remember { mutableStateOf(prefs.getInt("app_language", AppLocale.SYSTEM)) }
     val fakeDeviceId = remember { mutableStateOf(appConfig.fakeDeviceId) }
     // Adaptive模式偏好设置（持久化存储），默认开启
     val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
@@ -108,6 +145,7 @@ fun MainUI(
     val isConnecting = appConnState == AppRfcommController.ConnectionState.CONNECTING
     val isError = appConnState == AppRfcommController.ConnectionState.ERROR
     val canShowDetailPage = hookConnected.value || isStandaloneConnected
+    val showEarphoneDetail = canShowDetailPage && !showDevicePicker
 
     val displayBattery = if (isStandaloneConnected) appBattery else batteryParams.value
     val displayAnc = if (isStandaloneConnected) appAnc else ancMode.value
@@ -122,6 +160,20 @@ fun MainUI(
     LaunchedEffect(displayTitle) {
         if (displayTitle.isNotEmpty()) {
             mainTitle.value = displayTitle
+        }
+    }
+
+    LaunchedEffect(canShowDetailPage) {
+        if (!hasAppliedDefaultTab) {
+            selectedTab = if (canShowDetailPage) MainTab.Earphones else MainTab.Module
+            hasAppliedDefaultTab = true
+        }
+    }
+
+    LaunchedEffect(isStandaloneConnected) {
+        if (isStandaloneConnected) {
+            showDevicePicker = false
+            selectedTab = MainTab.Earphones
         }
     }
 
@@ -153,6 +205,8 @@ fun MainUI(
                         val deviceName = p1.getStringExtra("device_name")
                         mainTitle.value = deviceName ?: ""
                         hookConnected.value = true
+                        showDevicePicker = false
+                        selectedTab = MainTab.Earphones
                         Log.i("OppoPods", "pod connected via hook: $deviceName")
                     }
 
@@ -163,17 +217,29 @@ fun MainUI(
                             p0.finish()
                         }
                     }
+
+                    BluetoothAdapter.ACTION_STATE_CHANGED,
+                    BluetoothDevice.ACTION_BOND_STATE_CHANGED -> {
+                        bluetoothState = readBluetoothState(context)
+                    }
                 }
             }
         }
     }
 
     DisposableEffect(Unit) {
+        val serviceListener: (io.github.libxposed.service.XposedService?) -> Unit = { service ->
+            xposedService = service
+        }
+        OppoPodsApp.addServiceListener(serviceListener)
+
         context.registerReceiver(broadcastReceiver, IntentFilter().apply {
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         }, Context.RECEIVER_EXPORTED)
 
         context.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_UI_INIT))
@@ -182,6 +248,7 @@ fun MainUI(
             try {
                 context.unregisterReceiver(broadcastReceiver)
             } catch (_: Exception) {}
+            OppoPodsApp.removeServiceListener(serviceListener)
             appController.disconnect()
         }
     }
@@ -221,7 +288,15 @@ fun MainUI(
     }
 
     fun onDeviceSelected(device: BluetoothDevice) {
+        showDevicePicker = false
         appController.connect(device, autoGameMode = autoGameMode.value)
+    }
+
+    fun backToDevicePicker() {
+        showDevicePicker = true
+        appController.disconnect()
+        hookConnected.value = false
+        mainTitle.value = ""
     }
 
     fun refreshStatus() {
@@ -232,30 +307,33 @@ fun MainUI(
         }
     }
 
-    // Each entry has its own Scaffold+TopAppBar so the full page transitions together
     val entryProvider = entryProvider<Screen> {
-        entry<Screen.Home> {
-            val homeTitle = mainTitle.value.ifEmpty { stringResource(R.string.app_name) }
+        entry<Screen.Main> {
             val topAppBarScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+            val title = when (selectedTab) {
+                MainTab.Module -> stringResource(R.string.app_name)
+                MainTab.Earphones -> mainTitle.value.ifEmpty { stringResource(R.string.pod_info) }
+                MainTab.Settings -> stringResource(R.string.settings)
+            }
 
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = homeTitle,
-                        largeTitle = homeTitle,
+                        title = title,
+                        largeTitle = title,
                         scrollBehavior = topAppBarScrollBehavior,
                         navigationIcon = {
-                            IconButton(
-                                onClick = { (context as? Activity)?.finish() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
+                            if (selectedTab == MainTab.Earphones && showEarphoneDetail) {
+                                IconButton(onClick = { backToDevicePicker() }) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Back,
+                                        contentDescription = "Back"
+                                    )
+                                }
                             }
                         },
                         actions = {
-                            if (canShowDetailPage) {
+                            if (selectedTab == MainTab.Earphones && canShowDetailPage) {
                                 IconButton(onClick = { refreshStatus() }) {
                                     Icon(
                                         imageVector = MiuixIcons.Refresh,
@@ -263,126 +341,180 @@ fun MainUI(
                                     )
                                 }
                             }
-                            IconButton(
-                                onClick = { backStack.add(Screen.Settings) },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Settings,
-                                    contentDescription = "Settings"
+                        }
+                    )
+                },
+                bottomBar = {
+                    Box(modifier = Modifier.padding(horizontal = if (floatingBottomBar.value) 16.dp else 0.dp, vertical = if (floatingBottomBar.value) 10.dp else 0.dp)) {
+                        NavigationBar(
+                            color = if (blurBottomBar.value) MiuixTheme.colorScheme.surface.copy(alpha = 0.82f) else MiuixTheme.colorScheme.surface,
+                            showDivider = !floatingBottomBar.value,
+                        ) {
+                            tabs.forEach { tab ->
+                                NavigationBarItem(
+                                    selected = selectedTab == tab,
+                                    onClick = { selectedTab = tab },
+                                    icon = tab.icon,
+                                    label = tab.title(),
                                 )
                             }
                         }
-                    )
+                    }
                 }
             ) { padding ->
-                AnimatedContent(
-                    targetState = when {
-                        canShowDetailPage -> "detail"
-                        isConnecting -> "connecting"
-                        isError -> "error"
-                        else -> "picker"
-                    },
-                    label = "MainPageAnim"
-                ) { state ->
-                    when (state) {
-                        "detail" -> PodDetailPage(
-                            modifier = Modifier
-                                .overScrollVertical()
-                                .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
-                            contentPadding = padding,
-                            batteryParams = displayBattery,
-                            ancMode = displayAnc,
-                            onAncModeChange = { setAncMode(it) },
-                            gameMode = displayGameMode,
-                            onGameModeChange = { setGameMode(it) },
-                            adaptiveModeEnabled = adaptiveMode.value
-                        )
-                        "connecting" -> Box(Modifier.padding(padding).fillMaxSize()) { ConnectingPage() }
-                        "error" -> Box(Modifier.padding(padding).fillMaxSize()) { ErrorPage(onRetry = { appController.disconnect() }) }
-                        else -> Box(Modifier.padding(padding).fillMaxSize()) { DevicePickerPage(onDeviceSelected = { onDeviceSelected(it) }) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(appBackground(colorMode))
+                        .padding(padding),
+                ) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        label = "MainTabAnim"
+                    ) { tab ->
+                        when (tab) {
+                            MainTab.Module -> HomePage(
+                                modifier = Modifier
+                                    .overScrollVertical()
+                                    .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
+                                xposedService = xposedService,
+                                bluetoothEnabled = bluetoothState.enabled,
+                                bondedDeviceCount = bluetoothState.bondedCount,
+                                bottomContentPadding = 28.dp,
+                            )
+
+                            MainTab.Earphones -> AnimatedContent(
+                                targetState = when {
+                                    showEarphoneDetail -> "detail"
+                                    isConnecting -> "connecting"
+                                    isError -> "error"
+                                    else -> "picker"
+                                },
+                                label = "EarphonesPageAnim"
+                            ) { state ->
+                                when (state) {
+                                    "detail" -> PodDetailPage(
+                                        modifier = Modifier
+                                            .overScrollVertical()
+                                            .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
+                                        contentPadding = PaddingValues(0.dp),
+                                        batteryParams = displayBattery,
+                                        ancMode = displayAnc,
+                                        onAncModeChange = { setAncMode(it) },
+                                        gameMode = displayGameMode,
+                                        onGameModeChange = { setGameMode(it) },
+                                        adaptiveModeEnabled = adaptiveMode.value
+                                    )
+
+                                    "connecting" -> ConnectingPage()
+                                    "error" -> ErrorPage(onRetry = { appController.disconnect() })
+                                    else -> DevicePickerPage(
+                                        connectedDeviceName = displayTitle,
+                                        onDeviceSelected = { onDeviceSelected(it) }
+                                    )
+                                }
+                            }
+
+                            MainTab.Settings -> SettingsPage(
+                                modifier = Modifier
+                                    .overScrollVertical()
+                                    .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
+                                contentPadding = PaddingValues(0.dp),
+                                themeMode = themeMode,
+                                onThemeModeChange = onThemeModeChange,
+                                accentMode = accentMode,
+                                onAccentModeChange = onAccentModeChange,
+                                floatingBottomBar = floatingBottomBar,
+                                onFloatingBottomBarChange = onFloatingBottomBarChange,
+                                blurBottomBar = blurBottomBar,
+                                onBlurBottomBarChange = onBlurBottomBarChange,
+                                desktopIconHidden = desktopIconHidden,
+                                onDesktopIconHiddenChange = {
+                                    desktopIconHidden.value = it
+                                    setLauncherIconHidden(context, it)
+                                },
+                                logLevel = logLevel,
+                                onLogLevelChange = {
+                                    logLevel.value = it
+                                    ConfigManager.updateLogLevel(prefs, xposedService, it)
+                                    broadcastConfigChanged(context, "com.android.bluetooth")
+                                    broadcastConfigChanged(context, "com.milink.service")
+                                    broadcastConfigChanged(context, "com.xiaomi.bluetooth")
+                                },
+                                appLanguage = appLanguage,
+                                onAppLanguageChange = {
+                                    appLanguage.value = it
+                                    prefs.edit().putInt("app_language", it).apply()
+                                    (context as? Activity)?.let { activity -> AppLocale.applyAndRecreate(activity, it) }
+                                },
+                                autoGameMode = autoGameMode,
+                                onAutoGameModeChange = {
+                                    autoGameMode.value = it
+                                    prefs.edit().putBoolean("auto_game_mode", it).apply()
+                                },
+                                openHeyTap = openHeyTap,
+                                onOpenHeyTapChange = {
+                                    openHeyTap.value = it
+                                    prefs.edit().putBoolean("open_heytap", it).apply()
+                                },
+                                adaptiveMode = adaptiveMode,
+                                onAdaptiveModeChange = {
+                                    adaptiveMode.value = it
+                                    prefs.edit().putBoolean("adaptive_mode", it).apply()
+                                    Intent(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED).apply {
+                                        putExtra("enabled", it)
+                                        context.sendBroadcast(this)
+                                    }
+                                    if (!it && displayAnc == NoiseControlMode.ADAPTIVE) {
+                                        setAncMode(NoiseControlMode.NOISE_CANCELLATION_MEDIUM)
+                                    }
+                                },
+                                fakeDeviceId = fakeDeviceId,
+                                onFakeDeviceIdChange = {
+                                    fakeDeviceId.value = it
+                                    ConfigManager.updateFakeDeviceId(prefs, xposedService, it)
+                                    broadcastConfigChanged(context, "com.android.bluetooth")
+                                    broadcastConfigChanged(context, "com.android.settings")
+                                    broadcastConfigChanged(context, "com.milink.service")
+                                    broadcastConfigChanged(context, "com.xiaomi.bluetooth")
+                                },
+                                onOpenAbout = { backStack.add(Screen.About) },
+                            )
+                        }
                     }
                 }
             }
         }
-        entry<Screen.Settings> {
-            val settingsScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
+        entry<Screen.About> {
+            val aboutScrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
 
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = stringResource(R.string.settings),
-                        largeTitle = stringResource(R.string.settings),
-                        scrollBehavior = settingsScrollBehavior,
+                        title = stringResource(R.string.about),
+                        largeTitle = stringResource(R.string.about),
+                        scrollBehavior = aboutScrollBehavior,
                         navigationIcon = {
-                            IconButton(
-                                onClick = { backStack.removeLast() },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Back,
-                                    contentDescription = "Back"
-                                )
+                            IconButton(onClick = { backStack.removeLast() }) {
+                                Icon(imageVector = MiuixIcons.Back, contentDescription = "Back")
                             }
                         }
                     )
                 }
             ) { padding ->
-                SettingsPage(
+                Box(
                     modifier = Modifier
-                        .overScrollVertical()
-                        .nestedScroll(settingsScrollBehavior.nestedScrollConnection),
-                    contentPadding = padding,
-                    themeMode = themeMode,
-                    onThemeModeChange = onThemeModeChange,
-                    autoGameMode = autoGameMode,
-                    onAutoGameModeChange = {
-                        autoGameMode.value = it
-                        prefs.edit().putBoolean("auto_game_mode", it).apply()
-                    },
-                    openHeyTap = openHeyTap,
-                    onOpenHeyTapChange = {
-                        openHeyTap.value = it
-                        prefs.edit().putBoolean("open_heytap", it).apply()
-                    },
-                    adaptiveMode = adaptiveMode,
-                    onAdaptiveModeChange = {
-                        adaptiveMode.value = it
-                        prefs.edit().putBoolean("adaptive_mode", it).apply()
-                        // 广播 Adaptive 模式状态变更到蓝牙进程，确保跨进程实时同步
-                        Intent(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED).apply {
-                            putExtra("enabled", it)
-                            context.sendBroadcast(this)
-                        }
-                        // 关闭Adaptive模式时，若当前处于Adaptive模式则自动切换至降噪模式
-                        if (!it && displayAnc == NoiseControlMode.ADAPTIVE) {
-                            setAncMode(NoiseControlMode.NOISE_CANCELLATION_MEDIUM)
-                        }
-                    },
-                    fakeDeviceId = fakeDeviceId,
-                    onFakeDeviceIdChange = {
-                        fakeDeviceId.value = it
-                        ConfigManager.updateFakeDeviceId(prefs, OppoPodsApp.xposedService, it)
-                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
-                            setPackage("com.android.bluetooth")
-                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                            context.sendBroadcast(this)
-                        }
-                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
-                            setPackage("com.android.settings")
-                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                            context.sendBroadcast(this)
-                        }
-                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
-                            setPackage("com.milink.service")
-                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                            context.sendBroadcast(this)
-                        }
-                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
-                            setPackage("com.xiaomi.bluetooth")
-                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                            context.sendBroadcast(this)
-                        }
-                    }
-                )
+                        .fillMaxSize()
+                        .background(appBackground(colorMode))
+                        .padding(padding),
+                ) {
+                    AboutPage(
+                        modifier = Modifier
+                            .overScrollVertical()
+                            .nestedScroll(aboutScrollBehavior.nestedScrollConnection),
+                        contentPadding = PaddingValues(0.dp),
+                    )
+                }
             }
         }
     }
@@ -402,6 +534,62 @@ fun MainUI(
             }
         }
     )
+}
+
+@Composable
+private fun MainTab.title(): String = when (this) {
+    MainTab.Module -> "模块"
+    MainTab.Earphones -> "耳机"
+    MainTab.Settings -> stringResource(R.string.settings)
+}
+
+@Composable
+fun appBackground(colorMode: ColorSchemeMode = ColorSchemeMode.System): Color {
+    val dark = when (colorMode) {
+        ColorSchemeMode.System, ColorSchemeMode.MonetSystem -> isSystemInDarkTheme()
+        ColorSchemeMode.Dark, ColorSchemeMode.MonetDark -> true
+        ColorSchemeMode.Light, ColorSchemeMode.MonetLight -> false
+    }
+    return if (dark) Color(0xFF101010) else Color(0xFFF5F5F7)
+}
+
+private data class BluetoothSummary(
+    val enabled: Boolean,
+    val bondedCount: Int,
+)
+
+private fun readBluetoothState(context: Context): BluetoothSummary {
+    val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    return runCatching {
+        BluetoothSummary(
+            enabled = adapter?.isEnabled == true,
+            bondedCount = adapter?.bondedDevices?.size ?: 0,
+        )
+    }.getOrDefault(BluetoothSummary(enabled = false, bondedCount = 0))
+}
+
+private fun isLauncherIconHidden(context: Context): Boolean {
+    val component = ComponentName(context, "moe.chenxy.oppopods.LauncherActivity")
+    val state = context.packageManager.getComponentEnabledSetting(component)
+    return state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+}
+
+private fun setLauncherIconHidden(context: Context, hidden: Boolean) {
+    val component = ComponentName(context, "moe.chenxy.oppopods.LauncherActivity")
+    val state = if (hidden) {
+        PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+    } else {
+        PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+    }
+    context.packageManager.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+}
+
+private fun broadcastConfigChanged(context: Context, packageName: String) {
+    Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
+        setPackage(packageName)
+        addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        context.sendBroadcast(this)
+    }
 }
 
 @Composable

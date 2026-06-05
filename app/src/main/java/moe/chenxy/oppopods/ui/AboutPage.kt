@@ -3,6 +3,7 @@ package moe.chenxy.oppopods.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,18 @@ fun SettingsPage(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     themeMode: MutableState<Int> = mutableStateOf(0),
     onThemeModeChange: (Int) -> Unit = {},
+    accentMode: MutableState<Int> = mutableStateOf(0),
+    onAccentModeChange: (Int) -> Unit = {},
+    floatingBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    onFloatingBottomBarChange: (Boolean) -> Unit = {},
+    blurBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    onBlurBottomBarChange: (Boolean) -> Unit = {},
+    desktopIconHidden: MutableState<Boolean> = mutableStateOf(false),
+    onDesktopIconHiddenChange: (Boolean) -> Unit = {},
+    logLevel: MutableState<Int> = mutableStateOf(ConfigManager.LOG_LEVEL_BASIC),
+    onLogLevelChange: (Int) -> Unit = {},
+    appLanguage: MutableState<Int> = mutableStateOf(AppLocale.SYSTEM),
+    onAppLanguageChange: (Int) -> Unit = {},
     autoGameMode: MutableState<Boolean> = mutableStateOf(false),
     onAutoGameModeChange: (Boolean) -> Unit = {},
     openHeyTap: MutableState<Boolean> = mutableStateOf(false),
@@ -39,14 +52,29 @@ fun SettingsPage(
     adaptiveMode: MutableState<Boolean> = mutableStateOf(true),
     onAdaptiveModeChange: (Boolean) -> Unit = {},
     fakeDeviceId: MutableState<String> = mutableStateOf(ConfigManager.DEFAULT_FAKE_DEVICE_ID),
-    onFakeDeviceIdChange: (String) -> Unit = {}
+    onFakeDeviceIdChange: (String) -> Unit = {},
+    onOpenAbout: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     val showHeyTapWarning = remember { mutableStateOf(false) }
     val themeOptions = listOf(
         stringResource(R.string.theme_follow_system),
         stringResource(R.string.theme_light),
         stringResource(R.string.theme_dark)
+    )
+    val accentOptions = listOf(
+        stringResource(R.string.color_default),
+        stringResource(R.string.color_monet),
+    )
+    val languageOptions = listOf(
+        stringResource(R.string.language_system),
+        stringResource(R.string.language_chinese),
+        stringResource(R.string.language_english),
+    )
+    val logLevelValues = listOf(ConfigManager.LOG_LEVEL_OFF, ConfigManager.LOG_LEVEL_BASIC, ConfigManager.LOG_LEVEL_DEBUG)
+    val logLevelOptions = listOf(
+        stringResource(R.string.log_level_off),
+        stringResource(R.string.log_level_basic),
+        stringResource(R.string.log_level_debug),
     )
 
     LazyColumn(
@@ -65,6 +93,50 @@ fun SettingsPage(
                     items = themeOptions,
                     selectedIndex = themeMode.value,
                     onSelectedIndexChange = { onThemeModeChange(it) }
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.theme_color),
+                    summary = stringResource(R.string.theme_color_summary),
+                    items = accentOptions,
+                    selectedIndex = accentMode.value.coerceIn(accentOptions.indices),
+                    onSelectedIndexChange = { onAccentModeChange(it) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.floating_bottom_bar),
+                    summary = stringResource(R.string.floating_bottom_bar_summary),
+                    checked = floatingBottomBar.value,
+                    onCheckedChange = { onFloatingBottomBarChange(it) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.blur_bottom_bar),
+                    summary = stringResource(R.string.blur_bottom_bar_summary),
+                    checked = blurBottomBar.value,
+                    onCheckedChange = { onBlurBottomBarChange(it) }
+                )
+            }
+        }
+
+        item {
+            Card(modifier = Modifier.padding(top = 12.dp)) {
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.language),
+                    summary = stringResource(R.string.language_summary),
+                    items = languageOptions,
+                    selectedIndex = appLanguage.value.coerceIn(languageOptions.indices),
+                    onSelectedIndexChange = { onAppLanguageChange(it) }
+                )
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.log_level),
+                    summary = stringResource(R.string.log_level_summary),
+                    items = logLevelOptions,
+                    selectedIndex = logLevelValues.indexOf(logLevel.value).coerceAtLeast(0),
+                    onSelectedIndexChange = { onLogLevelChange(logLevelValues[it]) }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.hide_desktop_icon),
+                    summary = stringResource(R.string.hide_desktop_icon_summary),
+                    checked = desktopIconHidden.value,
+                    onCheckedChange = { onDesktopIconHiddenChange(it) }
                 )
             }
         }
@@ -112,6 +184,54 @@ fun SettingsPage(
         item {
             Card(modifier = Modifier.padding(top = 12.dp)) {
                 BasicComponent(
+                    title = stringResource(R.string.about),
+                    summary = "OppoPods-Enhanced",
+                    onClick = onOpenAbout
+                )
+            }
+        }
+    }
+
+    OverlayDialog(
+        title = stringResource(R.string.heytap_warning_title),
+        summary = stringResource(R.string.heytap_warning),
+        show = showHeyTapWarning.value,
+        onDismissRequest = {
+            showHeyTapWarning.value = false
+        }
+    ) {
+        TextButton(
+            text = stringResource(R.string.confirm),
+            onClick = {
+                showHeyTapWarning.value = false
+                onOpenHeyTapChange(true)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.textButtonColorsPrimary()
+        )
+    }
+}
+
+@Composable
+fun AboutPage(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+) {
+    val context = LocalContext.current
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            top = contentPadding.calculateTopPadding() + 12.dp,
+            bottom = contentPadding.calculateBottomPadding() + 12.dp,
+            start = 12.dp,
+            end = 12.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card {
+                BasicComponent(
                     title = "OppoPods-Enhanced",
                     summary = "https://github.com/1812z/OppoPods",
                     onClick = {
@@ -147,24 +267,5 @@ fun SettingsPage(
                 )
             }
         }
-    }
-
-    OverlayDialog(
-        title = stringResource(R.string.heytap_warning_title),
-        summary = stringResource(R.string.heytap_warning),
-        show = showHeyTapWarning.value,
-        onDismissRequest = {
-            showHeyTapWarning.value = false
-        }
-    ) {
-        TextButton(
-            text = stringResource(R.string.confirm),
-            onClick = {
-                showHeyTapWarning.value = false
-                onOpenHeyTapChange(true)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.textButtonColorsPrimary()
-        )
     }
 }

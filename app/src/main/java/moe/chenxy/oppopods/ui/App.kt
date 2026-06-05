@@ -8,14 +8,29 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 @Composable
 fun App(
     themeMode: MutableState<Int> = mutableStateOf(0),
-    onThemeModeChange: (Int) -> Unit = {}
+    onThemeModeChange: (Int) -> Unit = {},
+    accentMode: MutableState<Int> = mutableStateOf(0),
+    onAccentModeChange: (Int) -> Unit = {},
+    floatingBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    onFloatingBottomBarChange: (Boolean) -> Unit = {},
+    blurBottomBar: MutableState<Boolean> = mutableStateOf(false),
+    onBlurBottomBarChange: (Boolean) -> Unit = {},
 ) {
     val colorSchemeMode = when (themeMode.value) {
         1 -> ColorSchemeMode.Light
         2 -> ColorSchemeMode.Dark
         else -> ColorSchemeMode.System
     }
-    AppTheme(colorSchemeMode = colorSchemeMode) {
-        MainUI(themeMode = themeMode, onThemeModeChange = onThemeModeChange)
+    AppTheme(colorSchemeMode = colorSchemeMode, accentMode = accentMode.value) {
+        MainUI(
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
+            accentMode = accentMode,
+            onAccentModeChange = onAccentModeChange,
+            floatingBottomBar = floatingBottomBar,
+            onFloatingBottomBarChange = onFloatingBottomBarChange,
+            blurBottomBar = blurBottomBar,
+            onBlurBottomBarChange = onBlurBottomBarChange,
+        )
     }
 }

@@ -11,15 +11,25 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import moe.chenxy.oppopods.config.ConfigManager
 import moe.chenxy.oppopods.ui.App
+import moe.chenxy.oppopods.ui.AppLocale
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        AppLocale.apply(newBase, newBase.getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE).getInt("app_language", AppLocale.SYSTEM))
+        super.attachBaseContext(newBase)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            val prefs = remember { getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
+            val prefs = remember { getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE) }
             val themeMode = remember { mutableStateOf(prefs.getInt("theme_mode", 0)) }
+            val accentMode = remember { mutableStateOf(prefs.getInt("accent_mode", 0)) }
+            val floatingBottomBar = remember { mutableStateOf(prefs.getBoolean("floating_bottom_bar", false)) }
+            val blurBottomBar = remember { mutableStateOf(prefs.getBoolean("blur_bottom_bar", false)) }
             val systemDark = isSystemInDarkTheme()
             val darkMode = when (themeMode.value) {
                 1 -> false
@@ -43,7 +53,22 @@ class MainActivity : ComponentActivity() {
                 onThemeModeChange = {
                     themeMode.value = it
                     prefs.edit().putInt("theme_mode", it).apply()
-                }
+                },
+                accentMode = accentMode,
+                onAccentModeChange = {
+                    accentMode.value = it
+                    prefs.edit().putInt("accent_mode", it).apply()
+                },
+                floatingBottomBar = floatingBottomBar,
+                onFloatingBottomBarChange = {
+                    floatingBottomBar.value = it
+                    prefs.edit().putBoolean("floating_bottom_bar", it).apply()
+                },
+                blurBottomBar = blurBottomBar,
+                onBlurBottomBarChange = {
+                    blurBottomBar.value = it
+                    prefs.edit().putBoolean("blur_bottom_bar", it).apply()
+                },
             )
         }
     }

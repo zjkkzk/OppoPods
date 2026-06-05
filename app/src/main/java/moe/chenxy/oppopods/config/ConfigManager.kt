@@ -8,7 +8,8 @@ import kotlinx.serialization.json.Json
 
 @Serializable
 data class AppConfig(
-    val fakeDeviceId: String = ConfigManager.DEFAULT_FAKE_DEVICE_ID
+    val fakeDeviceId: String = ConfigManager.DEFAULT_FAKE_DEVICE_ID,
+    val logLevel: Int = ConfigManager.LOG_LEVEL_BASIC
 )
 
 object ConfigManager {
@@ -16,7 +17,11 @@ object ConfigManager {
     const val PREFS_NAME = "oppopods_settings"
     const val PREF_KEY_CONFIG_JSON = "config_json"
     const val PREF_KEY_FAKE_DEVICE_ID = "fake_device_id"
-    const val DEFAULT_FAKE_DEVICE_ID = "01010901"
+    const val PREF_KEY_LOG_LEVEL = "log_level"
+    const val DEFAULT_FAKE_DEVICE_ID = "01010607"
+    const val LOG_LEVEL_OFF = 0
+    const val LOG_LEVEL_BASIC = 1
+    const val LOG_LEVEL_DEBUG = 2
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -44,6 +49,8 @@ object ConfigManager {
 
     fun fakeDeviceId(): String = current().fakeDeviceId.normalizedFakeDeviceId()
 
+    fun logLevel(): Int = current().logLevel.coerceIn(LOG_LEVEL_OFF, LOG_LEVEL_DEBUG)
+
     fun fakeSupport(): String = "${fakeDeviceId()},000000000000000010000000"
 
     fun updateFakeDeviceId(prefs: SharedPreferences, fakeDeviceId: String) {
@@ -53,6 +60,11 @@ object ConfigManager {
 
     fun updateFakeDeviceId(prefs: SharedPreferences, service: XposedService?, fakeDeviceId: String) {
         val config = current().copy(fakeDeviceId = fakeDeviceId.normalizedFakeDeviceId())
+        save(prefs, service, config)
+    }
+
+    fun updateLogLevel(prefs: SharedPreferences, service: XposedService?, logLevel: Int) {
+        val config = current().copy(logLevel = logLevel.coerceIn(LOG_LEVEL_OFF, LOG_LEVEL_DEBUG))
         save(prefs, service, config)
     }
 
@@ -80,21 +92,34 @@ object ConfigManager {
         prefs.edit()
             .putString(PREF_KEY_CONFIG_JSON, json.encodeToString(AppConfig.serializer(), config))
             .putString(PREF_KEY_FAKE_DEVICE_ID, config.fakeDeviceId)
+            .putInt(PREF_KEY_LOG_LEVEL, config.logLevel)
             .commit()
     }
 
     private fun readConfig(prefs: SharedPreferences, source: String): AppConfig {
         val directFakeDeviceId = prefs.getString(PREF_KEY_FAKE_DEVICE_ID, null)
+        val directLogLevel = prefs.getInt(PREF_KEY_LOG_LEVEL, Int.MIN_VALUE)
         val raw = prefs.getString(PREF_KEY_CONFIG_JSON, null)
         logPrefsSnapshot(source, prefs, directFakeDeviceId, raw)
         val config = raw?.let {
             runCatching { json.decodeFromString(AppConfig.serializer(), it) }.getOrNull()
         } ?: AppConfig()
         if (!directFakeDeviceId.isNullOrBlank()) {
-            return config.copy(fakeDeviceId = directFakeDeviceId.normalizedFakeDeviceId())
+            return config.copy(
+                fakeDeviceId = directFakeDeviceId.normalizedFakeDeviceId(),
+                logLevel = directLogLevel.takeIf { it != Int.MIN_VALUE } ?: config.logLevel,
+            ).normalized()
         }
-        return config.copy(fakeDeviceId = config.fakeDeviceId.normalizedFakeDeviceId())
+        return config.copy(
+            fakeDeviceId = config.fakeDeviceId.normalizedFakeDeviceId(),
+            logLevel = directLogLevel.takeIf { it != Int.MIN_VALUE } ?: config.logLevel,
+        ).normalized()
     }
+
+    private fun AppConfig.normalized(): AppConfig = copy(
+        fakeDeviceId = fakeDeviceId.normalizedFakeDeviceId(),
+        logLevel = logLevel.coerceIn(LOG_LEVEL_OFF, LOG_LEVEL_DEBUG),
+    )
 
     private fun String.normalizedFakeDeviceId(): String = trim().takeIf { it.isNotEmpty() } ?: DEFAULT_FAKE_DEVICE_ID
 
@@ -120,6 +145,9 @@ object ConfigManager {
         return buildList {
             if (oldConfig.fakeDeviceId != newConfig.fakeDeviceId) {
                 add("fakeDeviceId=${oldConfig.fakeDeviceId}->${newConfig.fakeDeviceId}")
+            }
+            if (oldConfig.logLevel != newConfig.logLevel) {
+                add("logLevel=${oldConfig.logLevel}->${newConfig.logLevel}")
             }
         }
     }

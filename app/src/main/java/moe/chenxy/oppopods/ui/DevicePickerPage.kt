@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothManager
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,10 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import moe.chenxy.oppopods.R
-import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -43,7 +45,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @SuppressLint("MissingPermission")
 @Composable
-fun DevicePickerPage(onDeviceSelected: (BluetoothDevice) -> Unit) {
+fun DevicePickerPage(
+    connectedDeviceName: String = "",
+    onDeviceSelected: (BluetoothDevice) -> Unit,
+) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -110,10 +115,11 @@ fun DevicePickerPage(onDeviceSelected: (BluetoothDevice) -> Unit) {
                 }
             }
             items(pairedDevices, key = { it.address }) { device ->
-                BasicComponent(
+                DeviceRow(
                     title = device.name ?: stringResource(R.string.unknown_device),
                     summary = device.address,
-                    onClick = { onDeviceSelected(device) }
+                    connected = connectedDeviceName.isNotBlank() && device.name == connectedDeviceName,
+                    onClick = { onDeviceSelected(device) },
                 )
             }
         }
@@ -158,6 +164,30 @@ fun DevicePickerPage(onDeviceSelected: (BluetoothDevice) -> Unit) {
                         }
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceRow(title: String, summary: String, connected: Boolean, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text(
+                text = title,
+                color = if (connected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                style = MiuixTheme.textStyles.headline1,
+            )
+            Text(
+                text = summary,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = MiuixTheme.textStyles.body2,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }

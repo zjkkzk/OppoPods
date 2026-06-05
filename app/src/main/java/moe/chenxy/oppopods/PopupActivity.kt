@@ -31,6 +31,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import moe.chenxy.oppopods.pods.NoiseControlMode
+import moe.chenxy.oppopods.config.ConfigManager
+import moe.chenxy.oppopods.ui.AppLocale
 import moe.chenxy.oppopods.ui.AppTheme
 import moe.chenxy.oppopods.ui.components.AncSwitch
 import moe.chenxy.oppopods.ui.components.PodStatus
@@ -44,20 +46,25 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
 class PopupActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        AppLocale.apply(newBase, newBase.getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE).getInt("app_language", AppLocale.SYSTEM))
+        super.attachBaseContext(newBase)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
+            val prefs = getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE)
             val colorSchemeMode = when (prefs.getInt("theme_mode", 0)) {
                 1 -> ColorSchemeMode.Light
                 2 -> ColorSchemeMode.Dark
                 else -> ColorSchemeMode.System
             }
-            AppTheme(colorSchemeMode = colorSchemeMode) {
+            AppTheme(colorSchemeMode = colorSchemeMode, accentMode = prefs.getInt("accent_mode", 0)) {
                 PopupContent(
                     onMore = {
-                        val prefs = getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE)
+                        val prefs = getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE)
                         if (prefs.getBoolean("open_heytap", false)) {
                             val intent = packageManager.getLaunchIntentForPackage("com.heytap.headset")
                             if (intent != null) {
@@ -82,7 +89,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     val context = LocalContext.current
     val showDialog = remember { mutableStateOf(false) }
 
-    val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE) }
     val themeMode = remember { prefs.getInt("theme_mode", 0) }
     // 读取Adaptive模式偏好设置
     val adaptiveModeEnabled = remember { prefs.getBoolean("adaptive_mode", true) }
