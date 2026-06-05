@@ -16,9 +16,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import moe.chenxy.oppopods.R
+import moe.chenxy.oppopods.config.ConfigManager
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
@@ -35,7 +37,9 @@ fun SettingsPage(
     openHeyTap: MutableState<Boolean> = mutableStateOf(false),
     onOpenHeyTapChange: (Boolean) -> Unit = {},
     adaptiveMode: MutableState<Boolean> = mutableStateOf(true),
-    onAdaptiveModeChange: (Boolean) -> Unit = {}
+    onAdaptiveModeChange: (Boolean) -> Unit = {},
+    fakeDeviceId: MutableState<String> = mutableStateOf(ConfigManager.DEFAULT_FAKE_DEVICE_ID),
+    onFakeDeviceIdChange: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val showHeyTapWarning = remember { mutableStateOf(false) }
@@ -90,6 +94,17 @@ fun SettingsPage(
                             onOpenHeyTapChange(false)
                         }
                     }
+                )
+                BasicComponent(
+                    title = stringResource(R.string.fake_device_id),
+                    summary = stringResource(R.string.fake_device_id_summary)
+                )
+                TextField(
+                    value = fakeDeviceId.value,
+                    onValueChange = { onFakeDeviceIdChange(it.trim()) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
                 )
             }
         }

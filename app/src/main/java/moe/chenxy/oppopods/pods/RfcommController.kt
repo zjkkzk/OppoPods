@@ -33,12 +33,13 @@ import java.io.IOException
 import java.io.InputStream
 import android.content.SharedPreferences
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicInteger
 
 @SuppressLint("MissingPermission", "StaticFieldLeak")
 object RfcommController {
     private const val TAG = "OppoPods-RfcommController"
     private const val RFCOMM_CHANNEL = 15
-    private const val BATTERY_POLL_INTERVAL_MS = 30_000L
+    private const val AUTO_RECONNECT_DELAY_MS = 60_000L
 
     // Basic Objects
     private var socket: BluetoothSocket? = null
@@ -65,9 +66,22 @@ object RfcommController {
     private var lastKnownCaseBattery: Int = 0
     private var lastKnownCaseCharging: Boolean = false
     private var cachedDeviceName: String = ""
+    private var receiverRegistered = false
+    private var routeScanStarted = false
 
-    // Polling job
-    private var batteryPollJob: kotlinx.coroutines.Job? = null
+    data class StatusSnapshot(
+        val battery: BatteryParams?,
+        val anc: Int,
+        val address: String?,
+        val deviceName: String?
+    )
+
+    // RFCOMM jobs
+    private var connectionJob: kotlinx.coroutines.Job? = null
+    private var reconnectJob: kotlinx.coroutines.Job? = null
+    private var readerJob: kotlinx.coroutines.Job? = null
+    private val reconnectAttempts = AtomicInteger(0)
+    private var reconnectPending = false
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
@@ -76,7 +90,7 @@ object RfcommController {
     }
 
     private fun changeUIAncStatus(status: Int) {
-        if (status < 1 || status > 4) return
+        if (status < 1 || status > 8) return
         Intent(OppoPodsAction.ACTION_PODS_ANC_CHANGED).apply {
             this.putExtra("status", status)
             this.`package` = BuildConfig.APPLICATION_ID
@@ -134,7 +148,7 @@ object RfcommController {
                 setANCMode(status)
             }
             OppoPodsAction.ACTION_REFRESH_STATUS -> {
-                queryStatus()
+                queryStatus(immediateReconnect = true)
             }
             OppoPodsAction.ACTION_GAME_MODE_SET -> {
                 val enabled = intent.getBooleanExtra("enabled", false)
@@ -152,6 +166,51 @@ object RfcommController {
                     setANCMode(2)
                 }
             }
+        }
+    }
+
+    fun currentStatusSnapshot(): StatusSnapshot {
+        return StatusSnapshot(
+            battery = if (::currentBatteryParams.isInitialized) currentBatteryParams else null,
+            anc = currentAnc,
+            address = if (::mDevice.isInitialized) mDevice.address else null,
+            deviceName = if (::mDevice.isInitialized) mDevice.name ?: cachedDeviceName else cachedDeviceName.takeIf { it.isNotEmpty() }
+        )
+    }
+
+    fun currentMiuiRefreshPayload(): String {
+        return miuiRefreshPayload(currentStatusSnapshot().battery, currentAnc)
+    }
+
+    fun miuiRefreshPayload(battery: BatteryParams?, anc: Int): String {
+        val values = MutableList(16) { "" }
+        values[0] = miuiBatteryValue(battery?.left)
+        values[1] = miuiBatteryValue(battery?.right)
+        values[2] = miuiBatteryValue(battery?.case)
+        values[7] = miuiAncLevel(anc)
+        values[8] = "true"
+        values[11] = "00"
+        values[13] = "00"
+        values[14] = "00"
+        return values.joinToString(",")
+    }
+
+    private fun miuiBatteryValue(params: PodParams?): String {
+        if (params?.isConnected != true) return "255"
+        val value = params.battery.coerceIn(0, 100)
+        return (if (params.isCharging) value or 128 else value).toString()
+    }
+
+    private fun miuiAncLevel(anc: Int): String {
+        // MIUI level codes are not ordered like OPPO payloads:
+        // 0103=Smart, 0101=Light, 0100=Medium, 0102=Deep.
+        return when (anc) {
+            5 -> "0103"
+            6 -> "0101"
+            2, 7 -> "0100"
+            8 -> "0102"
+            3 -> "0200"
+            else -> "0000"
         }
     }
 
@@ -228,17 +287,22 @@ object RfcommController {
     }
 
     private fun startRoutesScan() {
+        if (routeScanStarted) return
         val executor = Executor { p0 ->
             CoroutineScope(Dispatchers.IO).launch { p0?.run() }
         }
         val preferredFeature = listOf(MediaRoute2Info.FEATURE_LIVE_AUDIO, MediaRoute2Info.FEATURE_LIVE_VIDEO)
         mediaRouter.registerRouteCallback(executor, routeCallback, RouteDiscoveryPreference.Builder(preferredFeature, true).build())
         scanToken = mediaRouter.requestScan(MediaRouter2.ScanRequest.Builder().build())
+        routeScanStarted = true
     }
 
     private fun stopRoutesScan() {
         scanToken?.let { mediaRouter.cancelScanRequest(it) }
-        mediaRouter.unregisterRouteCallback(routeCallback)
+        if (routeScanStarted) {
+            mediaRouter.unregisterRouteCallback(routeCallback)
+            routeScanStarted = false
+        }
     }
 
     /**
@@ -251,6 +315,10 @@ object RfcommController {
     }
 
     fun connectPod(context: Context, device: BluetoothDevice, prefs: SharedPreferences) {
+        connectionJob?.cancel()
+        reconnectJob?.cancel()
+        readerJob?.cancel()
+        closeSocketOnly()
         mContext = context
         mDevice = device
         mPrefs = prefs
@@ -259,14 +327,17 @@ object RfcommController {
         adaptiveModeEnabled = mPrefs.getBoolean("adaptive_mode", true)
         Log.d(TAG, "Adaptive mode initial: $adaptiveModeEnabled")
 
-        context.registerReceiver(broadcastReceiver, IntentFilter().apply {
-            this.addAction(OppoPodsAction.ACTION_ANC_SELECT)
-            this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
-            this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
-            this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
-            this.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
-            this.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
-        }, Context.RECEIVER_EXPORTED)
+        if (!receiverRegistered) {
+            context.registerReceiver(broadcastReceiver, IntentFilter().apply {
+                this.addAction(OppoPodsAction.ACTION_ANC_SELECT)
+                this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
+                this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
+                this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
+                this.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
+                this.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
+            }, Context.RECEIVER_EXPORTED)
+            receiverRegistered = true
+        }
 
         Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
             this.putExtra("device_name", cachedDeviceName)
@@ -284,44 +355,8 @@ object RfcommController {
 
         isConnected = true
 
-        // Start persistent connection and battery polling
-        CoroutineScope(Dispatchers.IO).launch {
-            delay(500)
-            try {
-                socket = createRfcommSocket(device)
-                socket!!.connect()
-                Log.d(TAG, "RFCOMM connected!")
+        connectRfcomm(initialDelayMs = 500L)
 
-                // Start reader thread
-                startPacketReader(socket!!.inputStream)
-
-                // Initial status query (combo: battery wake + mode)
-                delay(300)
-                queryStatus()
-
-                // Auto-enable game mode if preference is set.
-                // Read remote module preferences since this runs in com.android.bluetooth.
-                if (mPrefs.getBoolean("auto_game_mode", false)) {
-                    delay(100)
-                    sendPacketSafe(Enums.GAME_MODE_ON)
-                }
-            } catch (e: IOException) {
-                Log.e(TAG, "RFCOMM connect failed", e)
-                isConnected = false
-                return@launch
-            }
-        }
-
-        // Start battery polling
-        batteryPollJob = CoroutineScope(Dispatchers.IO).launch {
-            delay(2000) // Wait for initial connection
-            while (isConnected) {
-                delay(BATTERY_POLL_INTERVAL_MS)
-                if (isConnected) {
-                    queryStatus()
-                }
-            }
-        }
     }
 
     private fun sendExternalPodsStatusBroadcast(action: String, fill: Intent.() -> Unit = {}) {
@@ -352,8 +387,83 @@ object RfcommController {
         putExtra("case_connected", status.case?.isConnected == true)
     }
 
+    private fun connectRfcomm(initialDelayMs: Long = 0L) {
+        connectionJob?.cancel()
+        connectionJob = CoroutineScope(Dispatchers.IO).launch {
+            if (initialDelayMs > 0) delay(initialDelayMs)
+            if (!isConnected || !::mDevice.isInitialized) return@launch
+            closeSocketOnly()
+            try {
+                val newSocket = createRfcommSocket(mDevice)
+                newSocket.connect()
+                socket = newSocket
+                reconnectAttempts.set(0)
+                reconnectPending = false
+                Log.d(TAG, "RFCOMM connected!")
+
+                startPacketReader(newSocket.inputStream)
+
+                delay(300)
+                queryStatus()
+
+                if (mPrefs.getBoolean("auto_game_mode", false)) {
+                    delay(100)
+                    sendPacketSafe(Enums.GAME_MODE_ON, "auto game mode")
+                }
+            } catch (e: IOException) {
+                Log.e(TAG, "RFCOMM connect failed", e)
+                scheduleReconnect("connect failed")
+            }
+        }
+    }
+
+    private fun scheduleReconnect(reason: String, immediate: Boolean = false) {
+        if (!isConnected || !::mDevice.isInitialized || mContext == null) return
+        closeSocketOnly()
+        reconnectPending = true
+        if (immediate) {
+            if (connectionJob?.isActive == true) {
+                Log.d(TAG, "immediate RFCOMM reconnect skipped: connecting reason=$reason")
+                return
+            }
+            Log.d(TAG, "immediate RFCOMM reconnect reason=$reason")
+            reconnectJob?.cancel()
+            reconnectJob = null
+            reconnectPending = false
+            connectRfcomm()
+            return
+        }
+        if (reconnectJob?.isActive == true) {
+            Log.d(TAG, "RFCOMM reconnect already scheduled reason=$reason")
+            return
+        }
+        val attempt = reconnectAttempts.incrementAndGet()
+        Log.d(TAG, "schedule RFCOMM reconnect reason=$reason attempt=$attempt delay=${AUTO_RECONNECT_DELAY_MS}ms")
+        reconnectJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(AUTO_RECONNECT_DELAY_MS)
+            reconnectJob = null
+            reconnectPending = false
+            connectRfcomm()
+        }
+    }
+
+    private fun reconnectNowForRequest(reason: String) {
+        if (socket != null && !reconnectPending) return
+        scheduleReconnect(reason, immediate = true)
+    }
+
+    private fun closeSocketOnly() {
+        readerJob?.cancel()
+        readerJob = null
+        try {
+            socket?.close()
+        } catch (_: IOException) {}
+        socket = null
+    }
+
     private fun startPacketReader(inputStream: InputStream) {
-        CoroutineScope(Dispatchers.IO).launch {
+        readerJob?.cancel()
+        readerJob = CoroutineScope(Dispatchers.IO).launch {
             val buffer = ByteArray(1024)
             try {
                 while (isConnected) {
@@ -363,12 +473,14 @@ object RfcommController {
                         handleOppoPacket(packet)
                     } else if (bytesRead == -1) {
                         Log.d(TAG, "RFCOMM stream ended")
+                        scheduleReconnect("stream ended")
                         break
                     }
                 }
             } catch (e: IOException) {
                 if (isConnected) {
                     Log.e(TAG, "RFCOMM read error", e)
+                    scheduleReconnect("read error")
                 }
             }
         }
@@ -401,6 +513,10 @@ object RfcommController {
             currentAnc = when (ancResult) {
                 NoiseControlMode.OFF -> 1
                 NoiseControlMode.NOISE_CANCELLATION -> 2
+                NoiseControlMode.NOISE_CANCELLATION_SMART -> 5
+                NoiseControlMode.NOISE_CANCELLATION_LIGHT -> 6
+                NoiseControlMode.NOISE_CANCELLATION_MEDIUM -> 7
+                NoiseControlMode.NOISE_CANCELLATION_DEEP -> 8
                 NoiseControlMode.TRANSPARENCY -> 3
                 NoiseControlMode.ADAPTIVE -> 4
             }
@@ -425,12 +541,13 @@ object RfcommController {
 
     fun disconnectedPod(context: Context, device: BluetoothDevice) {
         isConnected = false
-        batteryPollJob?.cancel()
+        connectionJob?.cancel()
+        reconnectJob?.cancel()
+        readerJob?.cancel()
+        reconnectAttempts.set(0)
+        reconnectPending = false
 
-        try {
-            socket?.close()
-        } catch (_: IOException) {}
-        socket = null
+        closeSocketOnly()
 
         mContext?.let {
             stopRoutesScan()
@@ -438,7 +555,10 @@ object RfcommController {
             Intent(OppoPodsAction.ACTION_PODS_DISCONNECTED).apply {
                 context.sendBroadcast(this)
             }
-            it.unregisterReceiver(broadcastReceiver)
+            if (receiverRegistered) {
+                it.unregisterReceiver(broadcastReceiver)
+                receiverRegistered = false
+            }
         }
 
         mShowedConnectedToast = false
@@ -449,12 +569,18 @@ object RfcommController {
         MediaControl.mContext = null
     }
 
-    private fun sendPacketSafe(packet: ByteArray) {
+    private fun sendPacketSafe(packet: ByteArray, requestReason: String? = null) {
+        if (requestReason != null) reconnectNowForRequest(requestReason)
         try {
-            socket?.outputStream?.write(packet)
-            socket?.outputStream?.flush()
+            val currentSocket = socket ?: run {
+                scheduleReconnect("socket null before send", immediate = requestReason != null)
+                return
+            }
+            currentSocket.outputStream.write(packet)
+            currentSocket.outputStream.flush()
         } catch (e: IOException) {
             Log.e(TAG, "Send packet failed", e)
+            scheduleReconnect("send error", immediate = requestReason != null)
         }
     }
 
@@ -463,17 +589,17 @@ object RfcommController {
         currentGameMode = enabled
         val packet = if (enabled) Enums.GAME_MODE_ON else Enums.GAME_MODE_OFF
         CoroutineScope(Dispatchers.IO).launch {
-            sendPacketSafe(packet)
+            sendPacketSafe(packet, "game mode control")
         }
     }
 
     fun cycleAnc() {
         // 使用广播同步的缓存值，避免 SharedPreferences 跨进程缓存导致读取过时值
         val next = when (currentAnc) {
-            2 -> if (adaptiveModeEnabled) 4 else 3  // NC → Adaptive（若启用）或 Transparency
+            2, 5, 6, 7, 8 -> if (adaptiveModeEnabled) 4 else 3  // NC → Adaptive（若启用）或 Transparency
             4 -> 3  // Adaptive → Transparency
             3 -> 1  // Transparency → OFF
-            else -> 2  // OFF or unknown → NC
+            else -> 7  // OFF or unknown → NC medium
         }
         setANCMode(next)
     }
@@ -486,29 +612,34 @@ object RfcommController {
             2 -> Enums.ANC_NOISE_CANCEL
             3 -> Enums.ANC_TRANSPARENCY
             4 -> Enums.ANC_ADAPTIVE
+            5 -> Enums.ANC_NOISE_CANCEL_SMART
+            6 -> Enums.ANC_NOISE_CANCEL_LIGHT
+            7 -> Enums.ANC_NOISE_CANCEL_MEDIUM
+            8 -> Enums.ANC_NOISE_CANCEL_DEEP
             else -> return
         }
         CoroutineScope(Dispatchers.IO).launch {
-            sendPacketSafe(packet)
+            sendPacketSafe(packet, "anc control")
         }
     }
 
     fun queryBattery() {
         CoroutineScope(Dispatchers.IO).launch {
-            sendPacketSafe(Enums.QUERY_BATTERY)
+            sendPacketSafe(Enums.QUERY_BATTERY, "battery query")
         }
     }
 
     /**
      * Combo query strategy: send batch query (wake + game mode), then battery, then ANC.
      */
-    fun queryStatus() {
+    fun queryStatus(immediateReconnect: Boolean = true) {
         CoroutineScope(Dispatchers.IO).launch {
-            sendPacketSafe(Enums.QUERY_STATUS)
+            val reason = if (immediateReconnect) "status query" else null
+            sendPacketSafe(Enums.QUERY_STATUS, reason)
             delay(50)
-            sendPacketSafe(Enums.QUERY_BATTERY)
+            sendPacketSafe(Enums.QUERY_BATTERY, reason)
             delay(50)
-            sendPacketSafe(Enums.QUERY_ANC)
+            sendPacketSafe(Enums.QUERY_ANC, reason)
         }
     }
 

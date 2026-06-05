@@ -29,10 +29,18 @@ object OppoPackets {
     }
 }
 
-/** ANC mode values for OPPO earphones (used in SET commands). */
+/**
+ * ANC mode values for OPPO earphones (used in SET commands).
+ * OPPO payload is 01 01 [value], except Adaptive which uses 01 01 00 08.
+ */
 object AncMode {
     const val OFF = 0x01
     const val NOISE_CANCELLATION = 0x02
+    // ANC intensity payloads from OPPO captures: Smart/Light/Medium/Deep.
+    const val NOISE_CANCELLATION_SMART = 0x80
+    const val NOISE_CANCELLATION_LIGHT = 0x40
+    const val NOISE_CANCELLATION_MEDIUM = 0x20
+    const val NOISE_CANCELLATION_DEEP = 0x10
     const val TRANSPARENCY = 0x04
     const val ADAPTIVE_HIGH = 0x00
     const val ADAPTIVE_LOW = 0x08
@@ -40,7 +48,25 @@ object AncMode {
 
 /** Noise control mode enum for UI. */
 enum class NoiseControlMode {
-    OFF, NOISE_CANCELLATION, ADAPTIVE, TRANSPARENCY
+    OFF,
+    NOISE_CANCELLATION,
+    NOISE_CANCELLATION_SMART,
+    NOISE_CANCELLATION_LIGHT,
+    NOISE_CANCELLATION_MEDIUM,
+    NOISE_CANCELLATION_DEEP,
+    ADAPTIVE,
+    TRANSPARENCY
+}
+
+fun NoiseControlMode.isNoiseCancellation(): Boolean {
+    return when (this) {
+        NoiseControlMode.NOISE_CANCELLATION,
+        NoiseControlMode.NOISE_CANCELLATION_SMART,
+        NoiseControlMode.NOISE_CANCELLATION_LIGHT,
+        NoiseControlMode.NOISE_CANCELLATION_MEDIUM,
+        NoiseControlMode.NOISE_CANCELLATION_DEEP -> true
+        else -> false
+    }
 }
 
 /** Battery component index in response payload. */
@@ -77,6 +103,26 @@ object Enums {
     /** Switch to Noise Cancellation: AA 0A 00 00 04 04 00 03 00 01 01 02 */
     val ANC_NOISE_CANCEL: ByteArray = OppoPackets.buildPacket(
         cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.NOISE_CANCELLATION.toByte())
+    )
+
+    /** Switch to Smart Noise Cancellation: AA 0A 00 00 04 04 00 03 00 01 01 80 */
+    val ANC_NOISE_CANCEL_SMART: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.NOISE_CANCELLATION_SMART.toByte())
+    )
+
+    /** Switch to Light Noise Cancellation: AA 0A 00 00 04 04 00 03 00 01 01 40 */
+    val ANC_NOISE_CANCEL_LIGHT: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.NOISE_CANCELLATION_LIGHT.toByte())
+    )
+
+    /** Switch to Medium Noise Cancellation: AA 0A 00 00 04 04 00 03 00 01 01 20 */
+    val ANC_NOISE_CANCEL_MEDIUM: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.NOISE_CANCELLATION_MEDIUM.toByte())
+    )
+
+    /** Switch to Deep Noise Cancellation: AA 0A 00 00 04 04 00 03 00 01 01 10 */
+    val ANC_NOISE_CANCEL_DEEP: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.NOISE_CANCELLATION_DEEP.toByte())
     )
 
     /** Switch to Transparency: AA 0A 00 00 04 04 00 03 00 01 01 04 */
@@ -249,8 +295,9 @@ object BatteryParser {
  * Parser for OPPO earphone ANC mode response/notification packets.
  *
  * Cmd: 0x810C (mode query response) or 0x0204 (mode change notification)
- * Scan payload for consecutive bytes 01 01 [Val1] [Val2]
- * Val mapping: 0x10 0x00=NC, 0x00 0x01=Transparency, 0x08 0x00=Off, 0x00 0x08=Adaptive
+ * Scan payload for consecutive bytes 01 01 [Val1] with optional [Val2].
+ * Val mapping: 0x10/0x20/0x40/0x80=NC levels, 0x04=Transparency,
+ * 0x01=Off, 0x00 0x08=Adaptive. Old 4-byte reports are accepted too.
  */
 object AncModeParser {
 
@@ -275,15 +322,22 @@ object AncModeParser {
             if (reportType == 0x01 || reportType == 0x02) return null
         }
 
-        // Scan for pattern: 01 01 [Val1] [Val2]
-        for (i in payloadStart until minOf(payloadStart + payLen - 3, data.size - 3)) {
+        // Scan for pattern: 01 01 [Val1] with optional [Val2]
+        val payloadEnd = minOf(payloadStart + payLen, data.size)
+        for (i in payloadStart until payloadEnd - 2) {
             if (data[i] == 0x01.toByte() && data[i + 1] == 0x01.toByte()) {
                 val val1 = data[i + 2].toInt() and 0xFF
-                val val2 = data[i + 3].toInt() and 0xFF
+                val val2 = if (i + 3 < payloadEnd) data[i + 3].toInt() and 0xFF else 0x00
 
                 return when {
-                    val1 == 0x10 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION
+                    val1 == 0x02 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION
+                    val1 == 0x80 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION_SMART
+                    val1 == 0x40 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION_LIGHT
+                    val1 == 0x20 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION_MEDIUM
+                    val1 == 0x10 && val2 == 0x00 -> NoiseControlMode.NOISE_CANCELLATION_DEEP
+                    val1 == 0x04 && val2 == 0x00 -> NoiseControlMode.TRANSPARENCY
                     val1 == 0x00 && val2 == 0x01 -> NoiseControlMode.TRANSPARENCY
+                    val1 == 0x01 && val2 == 0x00 -> NoiseControlMode.OFF
                     val1 == 0x08 && val2 == 0x00 -> NoiseControlMode.OFF
                     val1 == 0x00 && val2 == 0x08 -> NoiseControlMode.ADAPTIVE
                     else -> null

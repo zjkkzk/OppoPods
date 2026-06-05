@@ -5,13 +5,23 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import java.lang.reflect.Constructor
 import java.lang.reflect.Method
+import moe.chenxy.oppopods.config.ConfigManager
 
 abstract class HookContext {
     lateinit var module: XposedModule
     lateinit var appClassLoader: ClassLoader
     lateinit var prefs: SharedPreferences
+    lateinit var packageName: String
 
     abstract fun onHook()
+
+    fun fakeDeviceId(): String = ConfigManager.fakeDeviceId()
+
+    fun fakeSupport(): String = ConfigManager.fakeSupport()
+
+    fun refreshConfig() {
+        ConfigManager.refreshFromPrefs(prefs)
+    }
 
     fun findClass(name: String): Class<*> = Class.forName(name, false, appClassLoader)
 

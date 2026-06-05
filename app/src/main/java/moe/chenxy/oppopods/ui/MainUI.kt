@@ -46,7 +46,9 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.ui.NavDisplay
 import moe.chenxy.oppopods.MainActivity
+import moe.chenxy.oppopods.OppoPodsApp
 import moe.chenxy.oppopods.R
+import moe.chenxy.oppopods.config.ConfigManager
 import moe.chenxy.oppopods.pods.AppRfcommController
 import moe.chenxy.oppopods.pods.NoiseControlMode
 import moe.chenxy.oppopods.utils.miuiStrongToast.data.BatteryParams
@@ -87,9 +89,11 @@ fun MainUI(
     val gameMode = remember { mutableStateOf(false) }
 
     // Auto game mode preference (persisted)
-    val prefs = remember { context.getSharedPreferences("oppopods_settings", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(ConfigManager.PREFS_NAME, Context.MODE_PRIVATE) }
+    val appConfig = remember { ConfigManager.refreshFromPrefs(prefs) }
     val autoGameMode = remember { mutableStateOf(prefs.getBoolean("auto_game_mode", false)) }
     val openHeyTap = remember { mutableStateOf(prefs.getBoolean("open_heytap", false)) }
+    val fakeDeviceId = remember { mutableStateOf(appConfig.fakeDeviceId) }
     // Adaptive模式偏好设置（持久化存储），默认开启
     val adaptiveMode = remember { mutableStateOf(prefs.getBoolean("adaptive_mode", true)) }
 
@@ -132,6 +136,10 @@ fun MainUI(
                             2 -> NoiseControlMode.NOISE_CANCELLATION
                             3 -> NoiseControlMode.TRANSPARENCY
                             4 -> NoiseControlMode.ADAPTIVE
+                            5 -> NoiseControlMode.NOISE_CANCELLATION_SMART
+                            6 -> NoiseControlMode.NOISE_CANCELLATION_LIGHT
+                            7 -> NoiseControlMode.NOISE_CANCELLATION_MEDIUM
+                            8 -> NoiseControlMode.NOISE_CANCELLATION_DEEP
                             else -> NoiseControlMode.OFF
                         }
                     }
@@ -189,6 +197,10 @@ fun MainUI(
             NoiseControlMode.NOISE_CANCELLATION -> 2
             NoiseControlMode.TRANSPARENCY -> 3
             NoiseControlMode.ADAPTIVE -> 4
+            NoiseControlMode.NOISE_CANCELLATION_SMART -> 5
+            NoiseControlMode.NOISE_CANCELLATION_LIGHT -> 6
+            NoiseControlMode.NOISE_CANCELLATION_MEDIUM -> 7
+            NoiseControlMode.NOISE_CANCELLATION_DEEP -> 8
         }
         Intent(OppoPodsAction.ACTION_ANC_SELECT).apply {
             this.putExtra("status", status)
@@ -342,7 +354,32 @@ fun MainUI(
                         }
                         // 关闭Adaptive模式时，若当前处于Adaptive模式则自动切换至降噪模式
                         if (!it && displayAnc == NoiseControlMode.ADAPTIVE) {
-                            setAncMode(NoiseControlMode.NOISE_CANCELLATION)
+                            setAncMode(NoiseControlMode.NOISE_CANCELLATION_MEDIUM)
+                        }
+                    },
+                    fakeDeviceId = fakeDeviceId,
+                    onFakeDeviceIdChange = {
+                        fakeDeviceId.value = it
+                        ConfigManager.updateFakeDeviceId(prefs, OppoPodsApp.xposedService, it)
+                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
+                            setPackage("com.android.bluetooth")
+                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                            context.sendBroadcast(this)
+                        }
+                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
+                            setPackage("com.android.settings")
+                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                            context.sendBroadcast(this)
+                        }
+                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
+                            setPackage("com.milink.service")
+                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                            context.sendBroadcast(this)
+                        }
+                        Intent(OppoPodsAction.ACTION_CONFIG_CHANGED).apply {
+                            setPackage("com.xiaomi.bluetooth")
+                            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                            context.sendBroadcast(this)
                         }
                     }
                 )

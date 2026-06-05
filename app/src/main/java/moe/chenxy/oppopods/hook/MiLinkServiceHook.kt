@@ -14,7 +14,6 @@ import moe.chenxy.oppopods.utils.miuiStrongToast.data.PodParams
 @SuppressLint("MissingPermission")
 object MiLinkServiceHook : HookContext() {
     private const val TAG = "OppoPods-MiLink"
-    private const val FAKE_DEVICE_ID = "01010901"
     private const val PREFS_NAME = "oppopods_milink_state"
     private val knownOppoAddresses = linkedSetOf<String>()
     private var context: Context? = null
@@ -50,14 +49,14 @@ object MiLinkServiceHook : HookContext() {
         )
         classes.forEach { className ->
             hookBluetoothDeviceResult(className, "checkIsMiTWS") { 1 }
-            hookBluetoothDeviceResult(className, "getDeviceId") { FAKE_DEVICE_ID }
+            hookBluetoothDeviceResult(className, "getDeviceId") { fakeDeviceId() }
             hookBluetoothDeviceResult(className, "getBatteryLevel") { 1 }
             hookBluetoothDeviceResult(className, "getAncState") { miLinkAncState() }
             hookBluetoothDeviceResult(className, "getDeviceRunInfo") { 0 }
             hookBluetoothDeviceResult(className, "getSpatialMode") { 0 }
             hookBluetoothDeviceResult(className, "getWearStatus") { "0,0" }
             hookBluetoothDeviceResult(className, "isLeAudio") { false }
-            hookAncCommand(className, "openAnc", 2, 1)
+            hookAncCommand(className, "openAnc", 7, 1)
             hookAncCommand(className, "closeAnc", 1, 0)
             hookAncCommand(className, "openTransparent", 3, 2)
         }
@@ -69,15 +68,15 @@ object MiLinkServiceHook : HookContext() {
     }
 
     private fun hookHeadsetRuntimeDisplay() {
-        hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getDeviceId") { FAKE_DEVICE_ID }
+        hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getDeviceId") { fakeDeviceId() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.ProfileContext", "getBatteryLevel") { miLinkBatteryLevels() }
-        hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getDeviceId") { FAKE_DEVICE_ID }
+        hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getDeviceId") { fakeDeviceId() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getAncState") { miLinkAncState() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getBatteryLevelCache") { miLinkBatteryLevels() }
         hookBluetoothDeviceResult("com.miui.headset.runtime.AncBatteryController", "getHeadsetPropertyBlock") { batteryPercentForMiLink() }
         hookAncStateBlock()
-        hookHeadsetInfoNoArg("getDeviceId") { FAKE_DEVICE_ID }
-        hookHeadsetInfoNoArg("component3") { FAKE_DEVICE_ID }
+        hookHeadsetInfoNoArg("getDeviceId") { fakeDeviceId() }
+        hookHeadsetInfoNoArg("component3") { fakeDeviceId() }
         hookHeadsetInfoNoArg("getPowers") { miLinkBatteryLevels() }
         hookHeadsetInfoNoArg("component4") { miLinkBatteryLevels() }
         hookHeadsetInfoNoArg("getMode") { miLinkAncState() }
@@ -165,10 +164,14 @@ object MiLinkServiceHook : HookContext() {
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
+            addAction(OppoPodsAction.ACTION_CONFIG_CHANGED)
         }
         context?.registerReceiver(object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
+                    OppoPodsAction.ACTION_CONFIG_CHANGED -> {
+                        refreshConfig()
+                    }
                     OppoPodsAction.ACTION_PODS_CONNECTED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
                         currentName = intent.getStringExtra("device_name") ?: currentName
@@ -231,7 +234,7 @@ object MiLinkServiceHook : HookContext() {
     private fun miLinkAncState(): Int {
         loadState()
         return when (currentAnc) {
-            2 -> 1
+            2, 5, 6, 7, 8 -> 1
             3 -> 2
             else -> 0
         }
@@ -239,7 +242,7 @@ object MiLinkServiceHook : HookContext() {
 
     private fun oppoAncFromMiLink(mode: Int): Int {
         return when (mode) {
-            1 -> 2
+            1 -> 7
             2 -> 3
             else -> 1
         }

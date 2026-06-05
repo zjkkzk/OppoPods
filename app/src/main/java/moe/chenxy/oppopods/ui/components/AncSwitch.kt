@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.chenxy.oppopods.R
 import moe.chenxy.oppopods.pods.NoiseControlMode
+import moe.chenxy.oppopods.pods.isNoiseCancellation
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.SinkFeedback
@@ -50,48 +51,121 @@ fun AncSwitch(
     adaptiveModeEnabled: Boolean = true
 ) {
     val verticalPadding = if (compact) 8.dp else 16.dp
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = verticalPadding),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = verticalPadding)
     ) {
-        AncButton(
-            offIconRes = R.drawable.ic_openanc_off,
-            onIconRes = R.drawable.ic_openanc_on,
-            label = stringResource(R.string.noise_cancellation_title),
-            isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION,
-            onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) },
-            modifier = Modifier.weight(1f),
-            compact = compact
-        )
-        // Adaptive模式按钮：仅当设置中启用Adaptive模式时显示
-        if (adaptiveModeEnabled) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             AncButton(
-                offIconRes = R.drawable.ic_adaptive_off,
-                onIconRes = R.drawable.ic_adaptive_on,
-                label = stringResource(R.string.adaptive_title),
-                isSelected = ancStatus == NoiseControlMode.ADAPTIVE,
-                onClick = { onAncModeChange(NoiseControlMode.ADAPTIVE) },
+                offIconRes = R.drawable.ic_openanc_off,
+                onIconRes = R.drawable.ic_openanc_on,
+                label = stringResource(R.string.noise_cancellation_title),
+                isSelected = ancStatus.isNoiseCancellation(),
+                onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_MEDIUM) },
+                modifier = Modifier.weight(1f),
+                compact = compact
+            )
+            // Adaptive模式按钮：仅当设置中启用Adaptive模式时显示
+            if (adaptiveModeEnabled) {
+                AncButton(
+                    offIconRes = R.drawable.ic_adaptive_off,
+                    onIconRes = R.drawable.ic_adaptive_on,
+                    label = stringResource(R.string.adaptive_title),
+                    isSelected = ancStatus == NoiseControlMode.ADAPTIVE,
+                    onClick = { onAncModeChange(NoiseControlMode.ADAPTIVE) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            AncButton(
+                offIconRes = R.drawable.ic_transparent_off,
+                onIconRes = R.drawable.ic_transparent_on,
+                label = stringResource(R.string.transparency_title),
+                isSelected = ancStatus == NoiseControlMode.TRANSPARENCY,
+                onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) },
                 modifier = Modifier.weight(1f)
             )
+            AncButton(
+                offIconRes = R.drawable.ic_closeanc_off,
+                onIconRes = R.drawable.ic_closeanc_on,
+                label = stringResource(R.string.off),
+                isSelected = ancStatus == NoiseControlMode.OFF,
+                onClick = { onAncModeChange(NoiseControlMode.OFF) },
+                modifier = Modifier.weight(1f),
+                compact = compact
+            )
         }
-        AncButton(
-            offIconRes = R.drawable.ic_transparent_off,
-            onIconRes = R.drawable.ic_transparent_on,
-            label = stringResource(R.string.transparency_title),
-            isSelected = ancStatus == NoiseControlMode.TRANSPARENCY,
-            onClick = { onAncModeChange(NoiseControlMode.TRANSPARENCY) },
-            modifier = Modifier.weight(1f)
-        )
-        AncButton(
-            offIconRes = R.drawable.ic_closeanc_off,
-            onIconRes = R.drawable.ic_closeanc_on,
-            label = stringResource(R.string.off),
-            isSelected = ancStatus == NoiseControlMode.OFF,
-            onClick = { onAncModeChange(NoiseControlMode.OFF) },
-            modifier = Modifier.weight(1f),
-            compact = compact
+
+        if (ancStatus.isNoiseCancellation()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = if (compact) 10.dp else 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AncLevelButton(
+                    label = stringResource(R.string.noise_cancellation_smart),
+                    isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION_SMART,
+                    onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_SMART) },
+                    modifier = Modifier.weight(1f),
+                    compact = compact
+                )
+                AncLevelButton(
+                    label = stringResource(R.string.noise_cancellation_light),
+                    isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION_LIGHT,
+                    onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_LIGHT) },
+                    modifier = Modifier.weight(1f),
+                    compact = compact
+                )
+                AncLevelButton(
+                    label = stringResource(R.string.noise_cancellation_medium),
+                    isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION_MEDIUM || ancStatus == NoiseControlMode.NOISE_CANCELLATION,
+                    onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_MEDIUM) },
+                    modifier = Modifier.weight(1f),
+                    compact = compact
+                )
+                AncLevelButton(
+                    label = stringResource(R.string.noise_cancellation_deep),
+                    isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION_DEEP,
+                    onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_DEEP) },
+                    modifier = Modifier.weight(1f),
+                    compact = compact
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AncLevelButton(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onBackground,
+        animationSpec = tween(ANIM_DURATION),
+        label = "anc_level_text_color"
+    )
+
+    Box(
+        modifier = modifier
+            .pressable(interactionSource = interactionSource, indication = SinkFeedback())
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            fontSize = if (compact) 12.sp else 13.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            color = textColor
         )
     }
 }

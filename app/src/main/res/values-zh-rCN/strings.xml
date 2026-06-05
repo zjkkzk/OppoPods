@@ -15,6 +15,10 @@
     <string name="open_heytap_summary">点击弹窗的更多按钮时跳转至欢律而非打开主页面</string>
     <string name="off">关闭</string>
     <string name="noise_cancellation_title">降噪</string>
+    <string name="noise_cancellation_smart">智能</string>
+    <string name="noise_cancellation_light">轻度</string>
+    <string name="noise_cancellation_medium">中度</string>
+    <string name="noise_cancellation_deep">深度</string>
     <string name="transparency_title">通透</string>
     <string name="adaptive_title">自适应</string>
     <string name="pod_case">耳机盒</string>

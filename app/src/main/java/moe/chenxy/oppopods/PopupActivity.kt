@@ -109,6 +109,10 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                             2 -> NoiseControlMode.NOISE_CANCELLATION
                             3 -> NoiseControlMode.TRANSPARENCY
                             4 -> NoiseControlMode.ADAPTIVE
+                            5 -> NoiseControlMode.NOISE_CANCELLATION_SMART
+                            6 -> NoiseControlMode.NOISE_CANCELLATION_LIGHT
+                            7 -> NoiseControlMode.NOISE_CANCELLATION_MEDIUM
+                            8 -> NoiseControlMode.NOISE_CANCELLATION_DEEP
                             else -> NoiseControlMode.OFF
                         }
                     }
@@ -167,6 +171,10 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
             NoiseControlMode.NOISE_CANCELLATION -> 2
             NoiseControlMode.TRANSPARENCY -> 3
             NoiseControlMode.ADAPTIVE -> 4
+            NoiseControlMode.NOISE_CANCELLATION_SMART -> 5
+            NoiseControlMode.NOISE_CANCELLATION_LIGHT -> 6
+            NoiseControlMode.NOISE_CANCELLATION_MEDIUM -> 7
+            NoiseControlMode.NOISE_CANCELLATION_DEEP -> 8
         }
         Intent(OppoPodsAction.ACTION_ANC_SELECT).apply {
             putExtra("status", status)

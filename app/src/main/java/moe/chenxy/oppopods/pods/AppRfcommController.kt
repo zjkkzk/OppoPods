@@ -221,6 +221,10 @@ class AppRfcommController {
         val packet = when (mode) {
             NoiseControlMode.OFF -> Enums.ANC_OFF
             NoiseControlMode.NOISE_CANCELLATION -> Enums.ANC_NOISE_CANCEL
+            NoiseControlMode.NOISE_CANCELLATION_SMART -> Enums.ANC_NOISE_CANCEL_SMART
+            NoiseControlMode.NOISE_CANCELLATION_LIGHT -> Enums.ANC_NOISE_CANCEL_LIGHT
+            NoiseControlMode.NOISE_CANCELLATION_MEDIUM -> Enums.ANC_NOISE_CANCEL_MEDIUM
+            NoiseControlMode.NOISE_CANCELLATION_DEEP -> Enums.ANC_NOISE_CANCEL_DEEP
             NoiseControlMode.ADAPTIVE -> Enums.ANC_ADAPTIVE
             NoiseControlMode.TRANSPARENCY -> Enums.ANC_TRANSPARENCY
         }

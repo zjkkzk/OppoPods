@@ -14,6 +14,10 @@
     <string name="open_heytap_summary">Launch HeyTap Headset instead of main page when tapping \"More\"</string>
     <string name="off">Off</string>
     <string name="noise_cancellation_title">NC</string>
+    <string name="noise_cancellation_smart">Smart</string>
+    <string name="noise_cancellation_light">Light</string>
+    <string name="noise_cancellation_medium">Medium</string>
+    <string name="noise_cancellation_deep">Deep</string>
     <string name="transparency_title">Transparency</string>
     <string name="adaptive_title">Adaptive</string>
     <string name="pod_case">Case</string>
@@ -44,5 +48,7 @@
     <string name="cycle_anc">Cycle ANC</string>
     <string name="adaptive_mode">Adaptive Mode</string>
     <string name="adaptive_mode_summary">Enable Adaptive noise control mode for compatible earphones</string>
+    <string name="fake_device_id">Fake model ID</string>
+    <string name="fake_device_id_summary">Used by LSPosed hooks in real time. Empty value falls back to 01010901.</string>
     <string name="notification_btn_disconnect">Disconnect</string>
 </resources>
