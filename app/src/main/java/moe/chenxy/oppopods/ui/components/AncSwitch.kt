@@ -65,7 +65,7 @@ fun AncSwitch(
                 onIconRes = R.drawable.ic_openanc_on,
                 label = stringResource(R.string.noise_cancellation_title),
                 isSelected = ancStatus.isNoiseCancellation(),
-                onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_MEDIUM) },
+                onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION) },
                 modifier = Modifier.weight(1f),
                 compact = compact
             )
@@ -122,7 +122,7 @@ fun AncSwitch(
                 )
                 AncLevelButton(
                     label = stringResource(R.string.noise_cancellation_medium),
-                    isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION_MEDIUM || ancStatus == NoiseControlMode.NOISE_CANCELLATION,
+                    isSelected = ancStatus == NoiseControlMode.NOISE_CANCELLATION_MEDIUM,
                     onClick = { onAncModeChange(NoiseControlMode.NOISE_CANCELLATION_MEDIUM) },
                     modifier = Modifier.weight(1f),
                     compact = compact

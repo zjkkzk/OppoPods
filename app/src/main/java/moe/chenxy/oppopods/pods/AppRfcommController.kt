@@ -54,6 +54,9 @@ class AppRfcommController {
     private val _gameMode = MutableStateFlow(false)
     val gameMode: StateFlow<Boolean> = _gameMode
 
+    private val _transparencyVocalEnhancement = MutableStateFlow(false)
+    val transparencyVocalEnhancement: StateFlow<Boolean> = _transparencyVocalEnhancement
+
     @SuppressLint("DiscouragedPrivateApi")
     private fun createRfcommSocket(device: BluetoothDevice): BluetoothSocket {
         val method = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
@@ -186,6 +189,13 @@ class AppRfcommController {
             return
         }
 
+        val transparencyVocalEnhancementResult = TransparencyVocalEnhancementParser.parse(packet)
+        if (transparencyVocalEnhancementResult != null) {
+            Log.d(TAG, "Transparency vocal enhancement received: $transparencyVocalEnhancementResult")
+            _transparencyVocalEnhancement.value = transparencyVocalEnhancementResult
+            return
+        }
+
         val ancResult = AncModeParser.parse(packet)
         if (ancResult != null) {
             Log.d(TAG, "ANC mode received: $ancResult")
@@ -214,6 +224,16 @@ class AppRfcommController {
     fun setGameMode(enabled: Boolean) {
         _gameMode.value = enabled
         val packet = if (enabled) Enums.GAME_MODE_ON else Enums.GAME_MODE_OFF
+        scope.launch { sendPacket(packet) }
+    }
+
+    fun setTransparencyVocalEnhancement(enabled: Boolean) {
+        _transparencyVocalEnhancement.value = enabled
+        val packet = if (enabled) {
+            Enums.TRANSPARENCY_VOCAL_ENHANCEMENT_ON
+        } else {
+            Enums.TRANSPARENCY_VOCAL_ENHANCEMENT_OFF
+        }
         scope.launch { sendPacket(packet) }
     }
 
@@ -263,5 +283,6 @@ class AppRfcommController {
         _ancMode.value = NoiseControlMode.OFF
         _deviceName.value = ""
         _gameMode.value = false
+        _transparencyVocalEnhancement.value = false
     }
 }

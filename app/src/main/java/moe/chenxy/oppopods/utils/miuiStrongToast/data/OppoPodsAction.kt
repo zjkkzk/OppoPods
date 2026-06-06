@@ -12,6 +12,8 @@ object OppoPodsAction {
     const val ACTION_REFRESH_STATUS = "chen.action.oppopods.refresh_status"
     const val ACTION_GAME_MODE_SET = "chen.action.oppopods.game_mode_set"
     const val ACTION_PODS_GAME_MODE_CHANGED = "chen.action.oppopods.pods_game_mode_changed"
+    const val ACTION_TRANSPARENCY_VOCAL_ENHANCEMENT_SET = "chen.action.oppopods.transparency_vocal_enhancement_set"
+    const val ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED = "chen.action.oppopods.pods_transparency_vocal_enhancement_changed"
     const val ACTION_CYCLE_ANC = "chen.action.oppopods.cycle_anc"
     // Adaptive模式开关状态变更广播，用于跨进程同步偏好设置（App → com.android.bluetooth / com.xiaomi.bluetooth）
     const val ACTION_ADAPTIVE_MODE_CHANGED = "chen.action.oppopods.adaptive_mode_changed"

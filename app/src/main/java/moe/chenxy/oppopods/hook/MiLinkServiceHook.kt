@@ -56,7 +56,7 @@ object MiLinkServiceHook : HookContext() {
             hookBluetoothDeviceResult(className, "getSpatialMode") { 0 }
             hookBluetoothDeviceResult(className, "getWearStatus") { "0,0" }
             hookBluetoothDeviceResult(className, "isLeAudio") { false }
-            hookAncCommand(className, "openAnc", 7, 1)
+            hookAncCommand(className, "openAnc", 2, 1)
             hookAncCommand(className, "closeAnc", 1, 0)
             hookAncCommand(className, "openTransparent", 3, 2)
         }
@@ -242,7 +242,7 @@ object MiLinkServiceHook : HookContext() {
 
     private fun oppoAncFromMiLink(mode: Int): Int {
         return when (mode) {
-            1 -> 7
+            1 -> 2
             2 -> 3
             else -> 1
         }

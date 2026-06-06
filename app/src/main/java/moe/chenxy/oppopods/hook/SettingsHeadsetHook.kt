@@ -28,6 +28,7 @@ object SettingsHeadsetHook : HookContext() {
     private var currentName: String? = null
     private var currentBattery: BatteryParams = BatteryParams()
     private var currentAnc = 1
+    private var currentTransparencyVocalEnhancement = false
     private var proxyCheckSupportCalls = 0
     private var proxySetCommonCommandCalls = 0
     private var proxyGetDeviceConfigCalls = 0
@@ -172,7 +173,7 @@ object SettingsHeadsetHook : HookContext() {
         }
         hookProxyVoidDeviceCommand(proxyClass, "changeAncLevel", String::class.java, BluetoothDevice::class.java) { commandArgs ->
             val level = commandArgs[0] as? String ?: return@hookProxyVoidDeviceCommand null
-            oppoAncFromLevel(level)
+            oppoAncFromLevelCommand(level)
         }
     }
 
@@ -340,18 +341,19 @@ object SettingsHeadsetHook : HookContext() {
             oppoAncFromSettings(commandArgs[0] as? Int ?: 0)
         }
         hookFragmentAncCommand("updateAncLevel", String::class.java, Boolean::class.javaPrimitiveType!!) { commandArgs ->
-            oppoAncFromLevel(commandArgs[0] as? String ?: "")
+            val level = commandArgs[0] as? String ?: ""
+            oppoAncFromLevelCommand(level)
         }
     }
 
-    private fun hookFragmentAncCommand(methodName: String, vararg parameterTypes: Class<*>, mode: (List<Any?>) -> Int) {
+    private fun hookFragmentAncCommand(methodName: String, vararg parameterTypes: Class<*>, mode: (List<Any?>) -> Int?) {
         runCatching {
             hookBefore(findMethod("com.android.settings.bluetooth.MiuiHeadsetFragment", methodName, *parameterTypes)) {
                 Log.d(TAG, "MiuiHeadsetFragment.$methodName before args=${args.describeArgs()} ${fragmentDebug(instance)} isOppo=${isOppoFragment(instance)}")
                 if (!isOppoFragment(instance)) return@hookBefore
                 val updateDevice = args.getOrNull(1) as? Boolean ?: true
                 if (!updateDevice) return@hookBefore
-                val oppoMode = mode(args)
+                val oppoMode = mode(args) ?: return@hookBefore
                 currentAnc = oppoMode
                 sendOppoAnc(oppoMode)
                 sendSettingsAncChanged(oppoMode)
@@ -372,6 +374,7 @@ object SettingsHeadsetHook : HookContext() {
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED)
             addAction(OppoPodsAction.ACTION_CONFIG_CHANGED)
         }
         context?.registerReceiver(object : BroadcastReceiver() {
@@ -397,6 +400,13 @@ object SettingsHeadsetHook : HookContext() {
                     OppoPodsAction.ACTION_PODS_ANC_CHANGED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
                         currentAnc = intent.getIntExtra("status", currentAnc)
+                        currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
+                        saveState(context)
+                        updateFragments()
+                    }
+                    OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED -> {
+                        currentAddress = intent.getStringExtra("address") ?: currentAddress
+                        currentTransparencyVocalEnhancement = intent.getBooleanExtra("enabled", currentTransparencyVocalEnhancement)
                         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
                         saveState(context)
                         updateFragments()
@@ -555,13 +565,13 @@ object SettingsHeadsetHook : HookContext() {
 
     private fun settingsAncLevel(): String {
         loadState()
-        // MIUI Settings level codes: 0103=Smart, 0101=Light, 0100=Medium, 0102=Deep.
+        // MIUI Settings level codes: 0103=Smart, 0101=Light, 0100=Medium, 0102=Deep, 0201=Transparency vocal enhancement.
         return when (currentAnc) {
             5 -> "0103"
             6 -> "0101"
-            2, 7 -> "0100"
+            7 -> "0100"
             8 -> "0102"
-            3 -> "0200"
+            3 -> if (currentTransparencyVocalEnhancement) "0201" else "0200"
             else -> "0000"
         }
     }
@@ -584,9 +594,8 @@ object SettingsHeadsetHook : HookContext() {
     }
 
     private fun oppoAncFromSettings(mode: Int): Int {
-        // Plain MIUI ANC mode does not carry intensity; default to Medium.
         return when (mode) {
-            1 -> 7
+            1 -> 2
             2 -> 3
             else -> 1
         }
@@ -605,6 +614,22 @@ object SettingsHeadsetHook : HookContext() {
         }
     }
 
+    private fun sendOppoTransparencyVocalEnhancementFromLevel(level: String) {
+        when {
+            level.startsWith("0201") -> sendOppoTransparencyVocalEnhancement(true)
+            level.startsWith("0200") -> sendOppoTransparencyVocalEnhancement(false)
+        }
+    }
+
+    private fun oppoAncFromLevelCommand(level: String): Int? {
+        if (level.startsWith("02")) {
+            currentAnc = 3
+            sendOppoTransparencyVocalEnhancementFromLevel(level)
+            return null
+        }
+        return oppoAncFromLevel(level)
+    }
+
     private fun sendOppoAnc(mode: Int) {
         val ctx = context ?: run {
             Log.w(TAG, "sendOppoAnc skipped: context is null mode=$mode")
@@ -615,6 +640,20 @@ object SettingsHeadsetHook : HookContext() {
             setPackage("com.android.bluetooth")
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         })
+    }
+
+    private fun sendOppoTransparencyVocalEnhancement(enabled: Boolean) {
+        val ctx = context ?: run {
+            Log.w(TAG, "sendOppoTransparencyVocalEnhancement skipped: context is null enabled=$enabled")
+            return
+        }
+        currentTransparencyVocalEnhancement = enabled
+        ctx.sendBroadcast(Intent(OppoPodsAction.ACTION_TRANSPARENCY_VOCAL_ENHANCEMENT_SET).apply {
+            putExtra("enabled", enabled)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
+        Log.d(TAG, "sendOppoTransparencyVocalEnhancement broadcast sent enabled=$enabled")
     }
 
     private fun sendSettingsAncChanged(mode: Int) {
@@ -668,6 +707,7 @@ object SettingsHeadsetHook : HookContext() {
             .putString("address", currentAddress)
             .putString("name", currentName)
             .putInt("anc", currentAnc)
+            .putBoolean("transparency_vocal_enhancement", currentTransparencyVocalEnhancement)
             .putInt("left_battery", currentBattery.left?.battery ?: 0)
             .putBoolean("left_charging", currentBattery.left?.isCharging == true)
             .putBoolean("left_connected", currentBattery.left?.isConnected == true)
@@ -688,6 +728,7 @@ object SettingsHeadsetHook : HookContext() {
         currentAddress = prefs.getString("address", currentAddress)
         currentName = prefs.getString("name", currentName)
         currentAnc = prefs.getInt("anc", currentAnc)
+        currentTransparencyVocalEnhancement = prefs.getBoolean("transparency_vocal_enhancement", currentTransparencyVocalEnhancement)
         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
         if (!hasSavedBattery && hasCurrentBattery()) return
         currentBattery = BatteryParams(

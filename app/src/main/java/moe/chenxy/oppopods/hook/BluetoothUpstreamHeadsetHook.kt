@@ -29,6 +29,8 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
     private var receiverRegistered = false
     private var currentBattery: BatteryParams? = null
     private var currentAnc = 1
+    private var currentTransparencyVocalEnhancement = false
+    private var hasTransparencyVocalEnhancementState = false
     private var currentAddress: String? = null
     private var currentName: String? = null
 
@@ -78,6 +80,7 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_BATTERY_CHANGED)
             addAction(OppoPodsAction.ACTION_PODS_ANC_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED)
             addAction(OppoPodsAction.ACTION_CONFIG_CHANGED)
         }
         context?.registerReceiver(object : BroadcastReceiver() {
@@ -103,6 +106,12 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
                     OppoPodsAction.ACTION_PODS_ANC_CHANGED -> {
                         currentAddress = intent.getStringExtra("address") ?: currentAddress
                         currentAnc = intent.getIntExtra("status", currentAnc)
+                        currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
+                    }
+                    OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED -> {
+                        currentAddress = intent.getStringExtra("address") ?: currentAddress
+                        currentTransparencyVocalEnhancement = intent.getBooleanExtra("enabled", currentTransparencyVocalEnhancement)
+                        hasTransparencyVocalEnhancementState = true
                         currentAddress?.let { knownOppoAddresses.add(it.uppercase()) }
                     }
                 }
@@ -292,7 +301,7 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
                 lastOppoDevice = device
                 result = null
                 Log.d(TAG, "BinderC6776v.changeAncLevel swallowed level=$level device=${device.describe()}")
-                level?.let { sendOppoAnc(oppoAncFromMiuiLevel(it)) }
+                level?.let { sendOppoAncLevel(it) }
                 sendRealStatus(device, "changeAncLevel:$level")
             }
         }.onFailure { Log.w(TAG, "hook BinderC6776v.changeAncLevel skipped", it) }
@@ -425,7 +434,7 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
         Log.d(TAG, "changeAncLevel upstream level=$level device=${device.describe()} isOppo=$isOppo")
         if (!isOppo) return null
         lastOppoDevice = device
-        level?.let { sendOppoAnc(oppoAncFromMiuiLevel(it)) }
+        level?.let { sendOppoAncLevel(it) }
         reply.writeNoException()
         sendRealStatus(device, "changeAncLevel:$level")
         return true
@@ -565,13 +574,22 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
             .getOrNull()
             ?.takeIf { it.address != null || it.battery != null }
         val battery = localSnapshot?.battery ?: currentBattery
-        val anc = localSnapshot?.anc ?: currentAnc
+        val anc = currentAnc
+        if (!hasTransparencyVocalEnhancementState && localSnapshot != null) {
+            currentTransparencyVocalEnhancement = localSnapshot.transparencyVocalEnhancement
+            hasTransparencyVocalEnhancementState = true
+        }
+        val transparencyVocalEnhancement = if (hasTransparencyVocalEnhancementState) {
+            currentTransparencyVocalEnhancement
+        } else {
+            localSnapshot?.transparencyVocalEnhancement ?: currentTransparencyVocalEnhancement
+        }
         localSnapshot?.address?.let {
             currentAddress = it
             knownOppoAddresses.add(it.uppercase())
         }
         localSnapshot?.deviceName?.let { currentName = it }
-        return RfcommController.miuiRefreshPayload(battery, anc)
+        return RfcommController.miuiRefreshPayload(battery, anc, transparencyVocalEnhancement)
     }
 
     private fun requestBluetoothStatus(reason: String) {
@@ -591,9 +609,8 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
     }
 
     private fun oppoAncFromMiuiMode(mode: Int): Int {
-        // Plain MIUI ANC mode does not carry intensity; default to Medium.
         return when (mode) {
-            1 -> 7
+            1 -> 2
             2 -> 3
             else -> 1
         }
@@ -609,6 +626,20 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
             level.startsWith("01") -> 7
             level.startsWith("02") -> 3
             else -> 1
+        }
+    }
+
+    private fun sendOppoAncLevel(level: String) {
+        when {
+            level.startsWith("0201") -> {
+                currentAnc = 3
+                sendOppoTransparencyVocalEnhancement(true)
+            }
+            level.startsWith("0200") -> {
+                currentAnc = 3
+                sendOppoTransparencyVocalEnhancement(false)
+            }
+            else -> sendOppoAnc(oppoAncFromMiuiLevel(level))
         }
     }
 
@@ -629,6 +660,21 @@ object BluetoothUpstreamHeadsetHook : HookContext() {
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         })
         Log.d(TAG, "sendOppoAnc broadcast sent mode=$mode")
+    }
+
+    private fun sendOppoTransparencyVocalEnhancement(enabled: Boolean) {
+        currentTransparencyVocalEnhancement = enabled
+        hasTransparencyVocalEnhancementState = true
+        val ctx = context ?: run {
+            Log.w(TAG, "sendOppoTransparencyVocalEnhancement skipped: context is null enabled=$enabled")
+            return
+        }
+        ctx.sendBroadcast(Intent(OppoPodsAction.ACTION_TRANSPARENCY_VOCAL_ENHANCEMENT_SET).apply {
+            putExtra("enabled", enabled)
+            setPackage("com.android.bluetooth")
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        })
+        Log.d(TAG, "sendOppoTransparencyVocalEnhancement broadcast sent enabled=$enabled")
     }
 
     @Suppress("DEPRECATION")

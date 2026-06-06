@@ -23,7 +23,6 @@ class HookEntry : XposedModule() {
             //"com.android.settings" -> loadHook(SettingsHeadsetHook, param.defaultClassLoader, param.packageName)
             "com.milink.service" -> loadHook(MiLinkServiceHook, param.defaultClassLoader, param.packageName)
             "com.xiaomi.bluetooth" -> {
-                loadHook(MiFastConnectPopupHook, param.defaultClassLoader, param.packageName)
                 loadHook(MiBluetoothToastHook, param.defaultClassLoader, param.packageName)
                 loadHook(BluetoothUpstreamHeadsetHook, param.defaultClassLoader, param.packageName)
             }

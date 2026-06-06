@@ -61,6 +61,7 @@ object RfcommController {
     lateinit var currentBatteryParams: BatteryParams
     private var currentAnc: Int = 1
     private var currentGameMode: Boolean = false
+    private var currentTransparencyVocalEnhancement: Boolean = false
     // Adaptive模式状态缓存，通过广播同步确保跨进程实时一致，避免 SharedPreferences 跨进程缓存导致读取过时值
     private var adaptiveModeEnabled: Boolean = true
     private var lastKnownCaseBattery: Int = 0
@@ -72,6 +73,7 @@ object RfcommController {
     data class StatusSnapshot(
         val battery: BatteryParams?,
         val anc: Int,
+        val transparencyVocalEnhancement: Boolean,
         val address: String?,
         val deviceName: String?
     )
@@ -125,6 +127,18 @@ object RfcommController {
         }
     }
 
+    private fun changeUITransparencyVocalEnhancementStatus(enabled: Boolean) {
+        Intent(OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED).apply {
+            this.putExtra("enabled", enabled)
+            this.`package` = BuildConfig.APPLICATION_ID
+            this.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            mContext!!.sendBroadcast(this)
+        }
+        sendExternalPodsStatusBroadcast(OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED) {
+            putExtra("enabled", enabled)
+        }
+    }
+
     fun handleUIEvent(intent: Intent) {
         when (intent.action) {
             OppoPodsAction.ACTION_PODS_UI_INIT -> {
@@ -133,6 +147,7 @@ object RfcommController {
                     changeUIBatteryStatus(currentBatteryParams)
                 changeUIAncStatus(currentAnc)
                 changeUIGameModeStatus(currentGameMode)
+                changeUITransparencyVocalEnhancementStatus(currentTransparencyVocalEnhancement)
                 Intent(OppoPodsAction.ACTION_PODS_CONNECTED).apply {
                     this.putExtra("device_name", mDevice.name ?: cachedDeviceName)
                     this.`package` = BuildConfig.APPLICATION_ID
@@ -154,6 +169,10 @@ object RfcommController {
                 val enabled = intent.getBooleanExtra("enabled", false)
                 setGameMode(enabled)
             }
+            OppoPodsAction.ACTION_TRANSPARENCY_VOCAL_ENHANCEMENT_SET -> {
+                val enabled = intent.getBooleanExtra("enabled", false)
+                setTransparencyVocalEnhancement(enabled)
+            }
             OppoPodsAction.ACTION_CYCLE_ANC -> {
                 cycleAnc()
             }
@@ -173,21 +192,22 @@ object RfcommController {
         return StatusSnapshot(
             battery = if (::currentBatteryParams.isInitialized) currentBatteryParams else null,
             anc = currentAnc,
+            transparencyVocalEnhancement = currentTransparencyVocalEnhancement,
             address = if (::mDevice.isInitialized) mDevice.address else null,
             deviceName = if (::mDevice.isInitialized) mDevice.name ?: cachedDeviceName else cachedDeviceName.takeIf { it.isNotEmpty() }
         )
     }
 
     fun currentMiuiRefreshPayload(): String {
-        return miuiRefreshPayload(currentStatusSnapshot().battery, currentAnc)
+        return miuiRefreshPayload(currentStatusSnapshot().battery, currentAnc, currentTransparencyVocalEnhancement)
     }
 
-    fun miuiRefreshPayload(battery: BatteryParams?, anc: Int): String {
+    fun miuiRefreshPayload(battery: BatteryParams?, anc: Int, transparencyVocalEnhancement: Boolean = false): String {
         val values = MutableList(16) { "" }
         values[0] = miuiBatteryValue(battery?.left)
         values[1] = miuiBatteryValue(battery?.right)
         values[2] = miuiBatteryValue(battery?.case)
-        values[7] = miuiAncLevel(anc)
+        values[7] = miuiAncLevel(anc, transparencyVocalEnhancement)
         values[8] = "true"
         values[11] = "00"
         values[13] = "00"
@@ -201,15 +221,15 @@ object RfcommController {
         return (if (params.isCharging) value or 128 else value).toString()
     }
 
-    private fun miuiAncLevel(anc: Int): String {
+    private fun miuiAncLevel(anc: Int, transparencyVocalEnhancement: Boolean): String {
         // MIUI level codes are not ordered like OPPO payloads:
-        // 0103=Smart, 0101=Light, 0100=Medium, 0102=Deep.
+        // 0103=Smart, 0101=Light, 0100=Medium, 0102=Deep, 0201=Transparency vocal enhancement.
         return when (anc) {
             5 -> "0103"
             6 -> "0101"
-            2, 7 -> "0100"
+            7 -> "0100"
             8 -> "0102"
-            3 -> "0200"
+            3 -> if (transparencyVocalEnhancement) "0201" else "0200"
             else -> "0000"
         }
     }
@@ -333,6 +353,7 @@ object RfcommController {
                 this.addAction(OppoPodsAction.ACTION_PODS_UI_INIT)
                 this.addAction(OppoPodsAction.ACTION_REFRESH_STATUS)
                 this.addAction(OppoPodsAction.ACTION_GAME_MODE_SET)
+                this.addAction(OppoPodsAction.ACTION_TRANSPARENCY_VOCAL_ENHANCEMENT_SET)
                 this.addAction(OppoPodsAction.ACTION_CYCLE_ANC)
                 this.addAction(OppoPodsAction.ACTION_ADAPTIVE_MODE_CHANGED)
             }, Context.RECEIVER_EXPORTED)
@@ -506,6 +527,14 @@ object RfcommController {
             return
         }
 
+        val transparencyVocalEnhancementResult = TransparencyVocalEnhancementParser.parse(packet)
+        if (transparencyVocalEnhancementResult != null) {
+            Log.d(TAG, "Transparency vocal enhancement received: $transparencyVocalEnhancementResult")
+            currentTransparencyVocalEnhancement = transparencyVocalEnhancementResult
+            changeUITransparencyVocalEnhancementStatus(transparencyVocalEnhancementResult)
+            return
+        }
+
         // Try parse as ANC mode response
         val ancResult = AncModeParser.parse(packet)
         if (ancResult != null) {
@@ -590,6 +619,20 @@ object RfcommController {
         val packet = if (enabled) Enums.GAME_MODE_ON else Enums.GAME_MODE_OFF
         CoroutineScope(Dispatchers.IO).launch {
             sendPacketSafe(packet, "game mode control")
+        }
+    }
+
+    fun setTransparencyVocalEnhancement(enabled: Boolean) {
+        Log.d(TAG, "setTransparencyVocalEnhancement: $enabled")
+        currentTransparencyVocalEnhancement = enabled
+        changeUITransparencyVocalEnhancementStatus(enabled)
+        val packet = if (enabled) {
+            Enums.TRANSPARENCY_VOCAL_ENHANCEMENT_ON
+        } else {
+            Enums.TRANSPARENCY_VOCAL_ENHANCEMENT_OFF
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            sendPacketSafe(packet, "transparency vocal enhancement control")
         }
     }
 

@@ -130,6 +130,20 @@ object Enums {
         cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.TRANSPARENCY.toByte())
     )
 
+    /** Enable transparency vocal enhancement: AA 0B 00 00 04 04 57 04 00 01 01 00 02 */
+    val TRANSPARENCY_VOCAL_ENHANCEMENT_ON: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_ANC,
+        seq = 0x57,
+        payload = byteArrayOf(0x01, 0x01, 0x00, 0x02)
+    )
+
+    /** Disable transparency vocal enhancement: AA 0B 00 00 04 04 57 04 00 01 01 00 01 */
+    val TRANSPARENCY_VOCAL_ENHANCEMENT_OFF: ByteArray = OppoPackets.buildPacket(
+        cmd = Cmd.SET_ANC,
+        seq = 0x57,
+        payload = byteArrayOf(0x01, 0x01, 0x00, 0x01)
+    )
+
     /** Switch to Off: AA 0A 00 00 04 04 00 03 00 01 01 01 */
     val ANC_OFF: ByteArray = OppoPackets.buildPacket(
         cmd = Cmd.SET_ANC, payload = byteArrayOf(0x01, 0x01, AncMode.OFF.toByte())
@@ -340,6 +354,44 @@ object AncModeParser {
                     val1 == 0x01 && val2 == 0x00 -> NoiseControlMode.OFF
                     val1 == 0x08 && val2 == 0x00 -> NoiseControlMode.OFF
                     val1 == 0x00 && val2 == 0x08 -> NoiseControlMode.ADAPTIVE
+                    else -> null
+                }
+            }
+        }
+        return null
+    }
+}
+
+/**
+ * Parser for Transparency vocal enhancement status.
+ *
+ * Status can appear in 0x0404 echoes or 0x0204 notifications. The payload may be
+ * plain 01 01 00 [01/02] or wrapped like 00 03 01 01 00 [01/02].
+ */
+object TransparencyVocalEnhancementParser {
+
+    fun parse(data: ByteArray): Boolean? {
+        if (data.size < 9) return null
+        if (data[0] != 0xAA.toByte()) return null
+
+        val cmdLow = data[4].toInt() and 0xFF
+        val cmdHigh = data[5].toInt() and 0xFF
+        val cmd = cmdLow or (cmdHigh shl 8)
+        if (cmd != Cmd.SET_ANC && cmd != Cmd.ANC_MODE_NOTIFY) return null
+
+        val payLen = (data[7].toInt() and 0xFF) or ((data[8].toInt() and 0xFF) shl 8)
+        val payloadStart = 9
+        if (data.size < payloadStart + payLen) return null
+
+        val payloadEnd = minOf(payloadStart + payLen, data.size)
+        for (i in payloadStart until payloadEnd - 3) {
+            if (data[i] == 0x01.toByte() &&
+                data[i + 1] == 0x01.toByte() &&
+                data[i + 2] == 0x00.toByte()
+            ) {
+                return when (data[i + 3].toInt() and 0xFF) {
+                    0x01 -> false
+                    0x02 -> true
                     else -> null
                 }
             }

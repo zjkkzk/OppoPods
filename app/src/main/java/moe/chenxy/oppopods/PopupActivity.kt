@@ -104,6 +104,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
     val batteryParams = remember { mutableStateOf(BatteryParams()) }
     val ancMode = remember { mutableStateOf(NoiseControlMode.OFF) }
     val gameMode = remember { mutableStateOf(false) }
+    val transparencyVocalEnhancement = remember { mutableStateOf(false) }
     val deviceName = remember { mutableStateOf("") }
 
     val broadcastReceiver = remember {
@@ -138,6 +139,9 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED -> {
                         gameMode.value = p1.getBooleanExtra("enabled", false)
                     }
+                    OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED -> {
+                        transparencyVocalEnhancement.value = p1.getBooleanExtra("enabled", false)
+                    }
                 }
             }
         }
@@ -150,6 +154,7 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
             addAction(OppoPodsAction.ACTION_PODS_CONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_DISCONNECTED)
             addAction(OppoPodsAction.ACTION_PODS_GAME_MODE_CHANGED)
+            addAction(OppoPodsAction.ACTION_PODS_TRANSPARENCY_VOCAL_ENHANCEMENT_CHANGED)
         }, Context.RECEIVER_EXPORTED)
 
         context.sendBroadcast(Intent(OppoPodsAction.ACTION_PODS_UI_INIT))
@@ -198,6 +203,14 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
         }
     }
 
+    fun setTransparencyVocalEnhancement(enabled: Boolean) {
+        transparencyVocalEnhancement.value = enabled
+        Intent(OppoPodsAction.ACTION_TRANSPARENCY_VOCAL_ENHANCEMENT_SET).apply {
+            putExtra("enabled", enabled)
+            context.sendBroadcast(this)
+        }
+    }
+
     val dialogBgColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF7F7F7)
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -218,8 +231,10 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     batteryParams = batteryParams.value,
                     ancMode = ancMode.value,
                     gameMode = gameMode.value,
+                    transparencyVocalEnhancement = transparencyVocalEnhancement.value,
                     onAncModeChange = ::setAncMode,
                     onGameModeChange = ::setGameMode,
+                    onTransparencyVocalEnhancementChange = ::setTransparencyVocalEnhancement,
                     onMore = onMore,
                     onDone = { showDialog.value = false },
                     adaptiveModeEnabled = adaptiveModeEnabled
@@ -229,8 +244,10 @@ private fun PopupContent(onMore: () -> Unit, onDone: () -> Unit) {
                     batteryParams = batteryParams.value,
                     ancMode = ancMode.value,
                     gameMode = gameMode.value,
+                    transparencyVocalEnhancement = transparencyVocalEnhancement.value,
                     onAncModeChange = ::setAncMode,
                     onGameModeChange = ::setGameMode,
+                    onTransparencyVocalEnhancementChange = ::setTransparencyVocalEnhancement,
                     onMore = onMore,
                     onDone = { showDialog.value = false },
                     adaptiveModeEnabled = adaptiveModeEnabled
@@ -245,8 +262,10 @@ private fun PortraitPopupBody(
     batteryParams: BatteryParams,
     ancMode: NoiseControlMode,
     gameMode: Boolean,
+    transparencyVocalEnhancement: Boolean,
     onAncModeChange: (NoiseControlMode) -> Unit,
     onGameModeChange: (Boolean) -> Unit,
+    onTransparencyVocalEnhancementChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
     adaptiveModeEnabled: Boolean = true
@@ -263,6 +282,17 @@ private fun PortraitPopupBody(
             AncSwitch(ancMode, onAncModeChange = onAncModeChange, adaptiveModeEnabled = adaptiveModeEnabled)
         }
         Spacer(modifier = Modifier.height(12.dp))
+        if (ancMode == NoiseControlMode.TRANSPARENCY) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                SwitchPreference(
+                    title = stringResource(R.string.transparency_vocal_enhancement),
+                    summary = stringResource(R.string.transparency_vocal_enhancement_summary),
+                    checked = transparencyVocalEnhancement,
+                    onCheckedChange = onTransparencyVocalEnhancementChange
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
         Card(modifier = Modifier.fillMaxWidth()) {
             SwitchPreference(
                 title = stringResource(R.string.game_mode),
@@ -295,8 +325,10 @@ private fun LandscapePopupBody(
     batteryParams: BatteryParams,
     ancMode: NoiseControlMode,
     gameMode: Boolean,
+    transparencyVocalEnhancement: Boolean,
     onAncModeChange: (NoiseControlMode) -> Unit,
     onGameModeChange: (Boolean) -> Unit,
+    onTransparencyVocalEnhancementChange: (Boolean) -> Unit,
     onMore: () -> Unit,
     onDone: () -> Unit,
     adaptiveModeEnabled: Boolean = true
@@ -327,6 +359,13 @@ private fun LandscapePopupBody(
             modifier = Modifier.weight(0.40f).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            if (ancMode == NoiseControlMode.TRANSPARENCY) {
+                TextButton(
+                    text = stringResource(R.string.transparency_vocal_enhancement),
+                    onClick = { onTransparencyVocalEnhancementChange(!transparencyVocalEnhancement) },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            }
             TextButton(
                 text = stringResource(
                     if (gameMode) R.string.disable_game_mode else R.string.enable_game_mode
