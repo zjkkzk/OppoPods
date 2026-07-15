@@ -109,4 +109,6 @@ dependencies {
 
     // HyperOS Focus Island API
     implementation(libs.focus.api)
+
+    testImplementation(libs.junit)
 }
