@@ -91,8 +91,10 @@ private fun normalizeDeviceName(deviceName: String): String {
 
 private fun isDeviceInCapabilityList(deviceName: String, supportedDevices: Array<String>): Boolean {
     val normalizedName = normalizeDeviceName(deviceName)
+    if (normalizedName.isEmpty()) return false
+
     return supportedDevices.any { supportedDevice ->
         val normalizedSupportedDevice = normalizeDeviceName(supportedDevice)
-        normalizedSupportedDevice in normalizedName || normalizedName in normalizedSupportedDevice
+        normalizedSupportedDevice.isNotEmpty() && normalizedSupportedDevice in normalizedName
     }
 }
